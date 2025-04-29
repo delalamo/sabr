@@ -1,0 +1,3 @@
+[submodule "libs/ANARCI"]
+	path = libs/ANARCI
+	url = https://github.com/oxpig/ANARCI.git
