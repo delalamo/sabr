@@ -1,5 +1,5 @@
-HMMER3/f [3.3.2 | Nov 2020]
-NAME  camelid_H.a3m
+HMMER3/f [3.4 | Aug 2023]
+NAME  camelid_H
 LENG  128
 ALPH  amino
 RF    yes
@@ -7,7 +7,7 @@ MM    no
 CONS  yes
 CS    no
 MAP   yes
-DATE  Sat May  3 14:06:21 2025
+DATE  Sat May  3 15:09:56 2025
 NSEQ  2641
 EFFN  1.730315
 CKSUM 3118986123
@@ -404,8 +404,8 @@ HMM          A        C        D        E        F        G        H        I   
           2.68618  4.42225  2.77519  2.73123  3.46354  2.40513  3.72494  3.29354  2.67741  2.69355  4.24690  2.90347  2.73739  3.18146  2.89801  2.37887  2.77519  2.98518  4.58477  3.61503
           0.01473  4.22532        *  0.61958  0.77255  0.00000        *
 //
-HMMER3/f [3.3.2 | Nov 2020]
-NAME  human_H.a3m
+HMMER3/f [3.4 | Aug 2023]
+NAME  human_H
 LENG  128
 ALPH  amino
 RF    yes
@@ -413,7 +413,7 @@ MM    no
 CONS  yes
 CS    no
 MAP   yes
-DATE  Sat May  3 14:06:21 2025
+DATE  Sat May  3 15:09:56 2025
 NSEQ  8190
 EFFN  1.698804
 CKSUM 3292794014
@@ -810,8 +810,8 @@ HMM          A        C        D        E        F        G        H        I   
           2.68618  4.42225  2.77519  2.73123  3.46354  2.40513  3.72494  3.29354  2.67741  2.69355  4.24690  2.90347  2.73739  3.18146  2.89801  2.37887  2.77519  2.98518  4.58477  3.61503
           0.01300  4.34956        *  0.61958  0.77255  0.00000        *
 //
-HMMER3/f [3.3.2 | Nov 2020]
-NAME  mouse_L.a3m
+HMMER3/f [3.4 | Aug 2023]
+NAME  mouse_L
 LENG  128
 ALPH  amino
 RF    yes
@@ -819,7 +819,7 @@ MM    no
 CONS  yes
 CS    no
 MAP   yes
-DATE  Sat May  3 14:06:21 2025
+DATE  Sat May  3 15:09:56 2025
 NSEQ  3470
 EFFN  1.360102
 CKSUM 605768436
@@ -1216,8 +1216,8 @@ HMM          A        C        D        E        F        G        H        I   
           2.68618  4.42225  2.77519  2.73123  3.46354  2.40513  3.72494  3.29354  2.67741  2.69355  4.24690  2.90347  2.73739  3.18146  2.89801  2.37887  2.77519  2.98518  4.58477  3.61503
           0.03442  3.38634        *  0.61958  0.77255  0.00000        *
 //
-HMMER3/f [3.3.2 | Nov 2020]
-NAME  mouse_H.a3m
+HMMER3/f [3.4 | Aug 2023]
+NAME  mouse_H
 LENG  128
 ALPH  amino
 RF    yes
@@ -1225,7 +1225,7 @@ MM    no
 CONS  yes
 CS    no
 MAP   yes
-DATE  Sat May  3 14:06:21 2025
+DATE  Sat May  3 15:09:56 2025
 NSEQ  3867
 EFFN  1.471456
 CKSUM 1580038735
@@ -1622,8 +1622,8 @@ HMM          A        C        D        E        F        G        H        I   
           2.68618  4.42225  2.77519  2.73123  3.46354  2.40513  3.72494  3.29354  2.67741  2.69355  4.24690  2.90347  2.73739  3.18146  2.89801  2.37887  2.77519  2.98518  4.58477  3.61503
           0.01298  4.35052        *  0.61958  0.77255  0.00000        *
 //
-HMMER3/f [3.3.2 | Nov 2020]
-NAME  human_L.a3m
+HMMER3/f [3.4 | Aug 2023]
+NAME  human_L
 LENG  128
 ALPH  amino
 RF    yes
@@ -1631,7 +1631,7 @@ MM    no
 CONS  yes
 CS    no
 MAP   yes
-DATE  Sat May  3 14:06:21 2025
+DATE  Sat May  3 15:09:56 2025
 NSEQ  7753
 EFFN  1.763430
 CKSUM 2300286896

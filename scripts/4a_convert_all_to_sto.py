@@ -34,7 +34,7 @@ def main():
             continue
         species, chain = file.split("_")
         seqs = get_seqs_from_a3m(os.path.join("/home/delalamo/sabr/a3ms/", file))
-        allseqs[(species, chain)] = seqs
+        allseqs[(species, chain[0])] = seqs
     output_stockholm_all(allseqs, "/home/delalamo/sabr/stos/")
 
 if __name__ == "__main__":
