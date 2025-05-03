@@ -1,0 +1,1 @@
+hmmbuild --hand --wnone ALL.hmm ../stos/ALL.sto W
