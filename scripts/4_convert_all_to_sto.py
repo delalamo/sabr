@@ -29,13 +29,13 @@ def get_seqs_from_a3m(file):
 
 def main():
     allseqs = {}
-    for file in os.listdir("/home/delalamo/sabr/a3ms/"):
+    for file in os.listdir("/home/delalamo/sabr/a3ms/aho/"):
         if not file.endswith("a3m"):
             continue
         species, chain = file.split("_")
-        seqs = get_seqs_from_a3m(os.path.join("/home/delalamo/sabr/a3ms/", file))
+        seqs = get_seqs_from_a3m(os.path.join("/home/delalamo/sabr/a3ms/aho", file))
         allseqs[(species, chain[0])] = seqs
-    output_stockholm_all(allseqs, "/home/delalamo/sabr/stos/")
+    output_stockholm_all(allseqs, "/home/delalamo/sabr/stos/aho")
 
 if __name__ == "__main__":
     main()
