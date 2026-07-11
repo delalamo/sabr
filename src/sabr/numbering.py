@@ -91,15 +91,41 @@ def number_alignment(
     scheme: str,
     chain_type: str,
 ) -> tuple:
-    """Number one aligned antibody sequence and return its query-row offset."""
+    """Return explicit query-row-to-number records for one alignment."""
     states, imgt_start, first_row = alignment_to_states(alignment)
     padded_sequence = "-" * imgt_start + sequence[first_row:]
-    numbered, _, _ = _apply_scheme(states, padded_sequence, scheme, chain_type)
+    numbered, start, end = _apply_scheme(
+        states, padded_sequence, scheme, chain_type
+    )
     numbered = [entry for entry in numbered if entry[1] != "-"]
+    if not 0 <= start <= end < len(padded_sequence):
+        raise ValueError(
+            f"ANARCI returned invalid sequence bounds {start}:{end}."
+        )
+
+    padded_rows = [None] * imgt_start + list(range(first_row, len(sequence)))
+    query_rows = [
+        row for row in padded_rows[start : end + 1] if row is not None
+    ]
+    if len(query_rows) != len(numbered):
+        raise ValueError(
+            "ANARCI numbering length does not match its query-row span."
+        )
+
+    records = []
+    for query_row, ((number, insertion_code), amino_acid) in zip(
+        query_rows, numbered
+    ):
+        if sequence[query_row] != amino_acid:
+            raise ValueError(
+                f"ANARCI expected {amino_acid} at query row {query_row}, "
+                f"but the structure contains {sequence[query_row]}."
+            )
+        records.append((query_row, number, insertion_code, amino_acid))
     LOGGER.info(
         "Numbered %d residues as %s using %s.",
-        len(numbered),
+        len(records),
         chain_type,
         scheme,
     )
-    return numbered, first_row
+    return records

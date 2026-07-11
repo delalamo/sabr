@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reference alignment using the validated affine Smith-Waterman method."""
 
+import functools
 import logging
 from importlib.resources import files
 
@@ -145,6 +146,7 @@ def create_gap_penalties(query_length: int, positions: list) -> tuple:
     return gap_extend, gap_open
 
 
+@functools.cache
 def load_references(noise_level: float) -> dict:
     """Load the H, K, and L reference embeddings for one noise level."""
     filename = f"embeddings_noise_{noise_level:.1f}.npz"
@@ -153,11 +155,71 @@ def load_references(noise_level: float) -> dict:
         data = np.load(handle, allow_pickle=True)["arr_0"].item()
     references = {}
     for chain_type in constants.CHAIN_TYPES:
+        embeddings = np.asarray(data[chain_type]["array"])
+        embeddings.flags.writeable = False
         references[chain_type] = (
-            np.asarray(data[chain_type]["array"]),
-            [int(position) for position in data[chain_type]["idxs"]],
+            embeddings,
+            tuple(int(position) for position in data[chain_type]["idxs"]),
         )
     return references
+
+
+def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
+    """Reject ambiguous paths before they are converted to numbering states."""
+    if alignment.ndim != 2 or not np.isfinite(alignment).all():
+        raise ValueError("Alignment must be a finite two-dimensional matrix.")
+    if not np.isin(alignment, (0, 1)).all():
+        raise ValueError("Alignment matrix must contain only zeroes and ones.")
+    if np.any(alignment.sum(axis=1) > 1):
+        raise ValueError("Alignment assigns a query row more than once.")
+    if np.any(alignment.sum(axis=0) > 1):
+        raise ValueError("Alignment assigns an IMGT column more than once.")
+
+    path = np.argwhere(alignment == 1)
+    if not len(path):
+        raise ValueError("Alignment contains no assigned residues.")
+    rows = path[:, 0]
+    columns = path[:, 1]
+    if np.any(np.diff(rows) <= 0) or np.any(np.diff(columns) <= 0):
+        raise ValueError(
+            "Alignment assignments are not strictly monotonic; use "
+            "residue_range to select one antibody domain."
+        )
+
+    first_row = int(rows[0])
+    first_position = int(columns[0]) + 1
+    if first_row and first_position - first_row < 1:
+        raise ValueError(
+            "N-terminal residues would require non-positive numbering; "
+            "use residue_range to select the antibody domain."
+        )
+
+    regions = list(constants.IMGT_LOOPS.values())
+    if chain_type in ("K", "L"):
+        regions.append((79, 84))
+    for index, (left_row, right_row) in enumerate(zip(rows, rows[1:])):
+        if right_row == left_row + 1:
+            continue
+        left_position = int(columns[index]) + 1
+        right_position = int(columns[index + 1]) + 1
+        if not any(
+            start <= left_position <= end and start <= right_position <= end
+            for start, end in regions
+        ):
+            raise ValueError(
+                f"Unassigned query rows {left_row + 1}-{right_row - 1} "
+                f"are bracketed by IMGT {left_position} and "
+                f"{right_position}; use residue_range to select one "
+                "antibody domain."
+            )
+
+    last_row = int(rows[-1])
+    last_position = int(columns[-1]) + 1
+    if last_row < alignment.shape[0] - 1 and last_position < 125:
+        raise ValueError(
+            f"Unassigned trailing query rows follow IMGT {last_position}; "
+            "use residue_range to select the antibody domain."
+        )
 
 
 def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
@@ -199,7 +261,17 @@ def align(
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, _, score = _align_reference(query, reference, positions)
+        reduced, similarity, score = _align_reference(
+            query, reference, positions
+        )
+        if (
+            not np.isfinite(score)
+            or not np.isfinite(reduced).all()
+            or not np.isfinite(similarity).all()
+        ):
+            raise ValueError(
+                f"{candidate} reference produced a non-finite alignment."
+            )
         LOGGER.info("%s reference score: %.4f", candidate, score)
         if best is None or score > best[0]:
             best = (score, candidate, reduced, positions)
@@ -213,4 +285,5 @@ def align(
     corrected = apply_corrections(
         full_alignment, selected_type, gap_indices=gap_indices
     )
+    _validate_alignment(corrected, selected_type)
     return corrected, selected_type, score

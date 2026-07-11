@@ -462,6 +462,7 @@ def _unflatten_parameters(flat_parameters: dict) -> dict:
     return parameters
 
 
+@functools.cache
 def load_parameters() -> dict:
     """Load the immutable trained encoder parameters."""
     path = files("sabr.assets") / "mpnn_encoder.npz"

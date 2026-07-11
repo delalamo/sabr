@@ -31,6 +31,10 @@ def _validate_options(
     )
     if normalized_chain_type not in ("auto", *constants.CHAIN_TYPES):
         raise ValueError("chain_type must be 'auto', 'H', 'K', or 'L'.")
+    if isinstance(noise_level, bool):
+        raise ValueError(
+            f"noise_level must be one of {constants.NOISE_LEVELS}."
+        )
     try:
         normalized_noise = float(noise_level)
     except (TypeError, ValueError) as error:
@@ -45,7 +49,10 @@ def _validate_options(
         if (
             not isinstance(residue_range, tuple)
             or len(residue_range) != 2
-            or not all(isinstance(value, int) for value in residue_range)
+            or not all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in residue_range
+            )
         ):
             raise ValueError(
                 "residue_range must be an inclusive (start, end) tuple."
@@ -80,10 +87,10 @@ def renumber_structure(
         selected_type,
         score,
     )
-    numbered, first_row = number_alignment(
+    numbered = number_alignment(
         imgt_alignment,
         data.sequence,
         scheme,
         selected_type,
     )
-    return apply_numbering(structure, chain, data, numbered, first_row)
+    return apply_numbering(structure, chain, data, numbered)

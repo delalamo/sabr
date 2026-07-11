@@ -53,10 +53,9 @@ def _stub_pipeline(monkeypatch):
         "number_alignment",
         lambda alignment, sequence, scheme, chain_type: (
             [
-                ((index + 1, " "), amino_acid)
+                (index, index + 1, "", amino_acid)
                 for index, amino_acid in enumerate(sequence)
-            ],
-            0,
+            ]
         ),
     )
 
@@ -205,6 +204,8 @@ def test_multiple_models_are_rejected():
         ({"residue_range": (2, 1)}, "start"),
         ({"chain_type": None}, "chain_type"),
         ({"noise_level": "invalid"}, "noise_level"),
+        ({"noise_level": False}, "noise_level"),
+        ({"residue_range": (False, 10)}, "residue_range"),
     ],
 )
 def test_invalid_public_options_fail_before_model_execution(kwargs, message):

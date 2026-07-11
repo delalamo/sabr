@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install pre-commit
+      - run: python -m pip install -c constraints.txt pre-commit
       - run: pre-commit run --all-files
 
   test:
@@ -34,7 +34,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e '.[test]'
+      - run: python -m pip install -c constraints.txt -e '.[test]'
       - run: JAX_PLATFORMS=cpu pytest --cov=sabr
 
   wheel:
@@ -46,10 +46,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install --upgrade pip build
+      - run: python -m pip install -c constraints.txt build
       - run: python -m build
       - run: python -m venv /tmp/sabr-wheel-test
-      - run: /tmp/sabr-wheel-test/bin/pip install dist/*.whl
+      - run: /tmp/sabr-wheel-test/bin/pip install -c constraints.txt dist/*.whl
       - run: /tmp/sabr-wheel-test/bin/python -c "import sabr"
       - run: /tmp/sabr-wheel-test/bin/sabr --help
       - run: /tmp/sabr-wheel-test/bin/sabr --version

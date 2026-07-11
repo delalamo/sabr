@@ -6,9 +6,12 @@ import uuid
 from pathlib import Path
 
 import click
+import jax
 from Bio.PDB import MMCIFIO, PDBIO, MMCIFParser, PDBParser
 
 from sabr import constants, renumber_structure
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _read_structure(path: Path):
@@ -21,17 +24,30 @@ def _read_structure(path: Path):
 
 
 def _validate_pdb_output(structure) -> None:
+    if sum(1 for _ in structure.get_atoms()) > 99_999:
+        raise ValueError(
+            "PDB output supports at most 99,999 atoms; use mmCIF output."
+        )
     for chain in structure.get_chains():
-        if len(chain.id) != 1:
+        if len(chain.id) != 1 or ord(chain.id) < 32 or ord(chain.id) > 126:
             raise ValueError(
-                f"PDB output requires one-character chain IDs; '{chain.id}' "
-                "requires mmCIF output."
+                "PDB output requires one printable ASCII chain character; "
+                f"'{chain.id}' requires mmCIF output."
             )
         for residue in chain:
-            if len(residue.id[2].strip()) > 1:
+            number = residue.id[1]
+            if not -999 <= number <= 9999:
                 raise ValueError(
-                    "PDB output cannot represent extended insertion codes; "
-                    "use .cif or .mmcif output."
+                    f"PDB output cannot represent residue number {number}; "
+                    "use mmCIF output."
+                )
+            insertion_code = residue.id[2].strip()
+            if len(insertion_code) > 1 or (
+                insertion_code and not 32 <= ord(insertion_code) <= 126
+            ):
+                raise ValueError(
+                    "PDB output requires blank or one printable ASCII "
+                    "insertion character; use mmCIF output."
                 )
 
 
@@ -123,6 +139,13 @@ def main(
     )
     try:
         structure = _read_structure(input_path)
+        if input_path.suffix.lower() in (".cif", ".mmcif"):
+            LOGGER.warning(
+                "Non-atomic mmCIF categories may not be preserved by CLI "
+                "conversion; use the in-memory Gemmi API when metadata "
+                "preservation is required."
+            )
+        LOGGER.info("JAX backend: %s", jax.default_backend())
         result = renumber_structure(
             structure,
             chain,
@@ -137,7 +160,16 @@ def main(
         raise
     except Exception as error:
         if temporary.exists():
-            temporary.unlink()
+            try:
+                temporary.unlink()
+            except OSError as cleanup_error:
+                LOGGER.warning(
+                    "Could not remove temporary output %s: %s",
+                    temporary,
+                    cleanup_error,
+                )
+        if verbose:
+            LOGGER.exception("Renumbering failed")
         raise click.ClickException(str(error)) from error
 
 

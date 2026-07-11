@@ -8,11 +8,12 @@ import pytest
 from sabr import constants
 from sabr.alignment import (
     _align_reference,
+    _validate_alignment,
     align,
     create_gap_penalties,
     load_references,
 )
-from sabr.model import encode
+from sabr.model import encode, load_parameters
 from sabr.structure import extract_chain
 
 DATA = Path(__file__).parent / "data"
@@ -104,6 +105,19 @@ def test_every_noise_asset_has_all_chain_references():
             assert embeddings.shape[0] == len(positions)
 
 
+def test_model_assets_are_cached_and_immutable():
+    load_parameters.cache_clear()
+    first_parameters = load_parameters()
+    assert load_parameters() is first_parameters
+
+    load_references.cache_clear()
+    first_references = load_references(0.0)
+    assert load_references(0.0) is first_references
+    for embeddings, positions in first_references.values():
+        assert not embeddings.flags.writeable
+        assert isinstance(positions, tuple)
+
+
 def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
     references = {
         chain_type: (np.zeros((1, 64)), [1])
@@ -151,3 +165,88 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     _, selected, _ = align(np.zeros((1, 64)), frozenset(), chain_type, 0.0)
     assert selected == chain_type
     assert seen == [constants.CHAIN_TYPES.index(chain_type)]
+
+
+def test_huge_internal_run_is_valid_inside_one_cdr():
+    alignment = np.zeros((102, 128), dtype=int)
+    alignment[0, 26] = 1
+    alignment[101, 37] = 1
+    _validate_alignment(alignment, "K")
+
+
+@pytest.mark.parametrize(
+    ("alignment", "message"),
+    [
+        (np.asarray([[0.0, np.nan]]), "finite"),
+        (np.asarray([[0, 2]]), "zeroes and ones"),
+        (np.asarray([[1, 1], [0, 0]]), "query row"),
+        (np.asarray([[1, 0], [1, 0]]), "IMGT column"),
+        (np.asarray([[0, 1], [1, 0]]), "monotonic"),
+    ],
+)
+def test_malformed_alignments_are_rejected(alignment, message):
+    with pytest.raises(ValueError, match=message):
+        _validate_alignment(alignment, "H")
+
+
+def test_internal_framework_run_is_rejected():
+    alignment = np.zeros((4, 128), dtype=int)
+    alignment[0, 19] = 1
+    alignment[3, 20] = 1
+    with pytest.raises(ValueError, match="residue_range"):
+        _validate_alignment(alignment, "H")
+
+
+def test_leading_and_trailing_alignment_boundaries():
+    valid_leading = np.zeros((4, 128), dtype=int)
+    valid_leading[2, 2] = 1
+    valid_leading[3, 3] = 1
+    _validate_alignment(valid_leading, "H")
+
+    invalid_leading = np.zeros((4, 128), dtype=int)
+    invalid_leading[3, 2] = 1
+    with pytest.raises(ValueError, match="non-positive"):
+        _validate_alignment(invalid_leading, "H")
+
+    valid_trailing = np.zeros((3, 128), dtype=int)
+    valid_trailing[0, 124] = 1
+    _validate_alignment(valid_trailing, "H")
+
+    invalid_trailing = np.zeros((3, 128), dtype=int)
+    invalid_trailing[0, 123] = 1
+    with pytest.raises(ValueError, match="trailing"):
+        _validate_alignment(invalid_trailing, "H")
+
+
+def test_non_finite_reference_score_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise: {"H": (np.zeros((1, 64)), (1,))},
+    )
+    monkeypatch.setattr(
+        "sabr.alignment._align_reference",
+        lambda query, reference, positions: (
+            np.ones((len(query), 1)),
+            np.zeros((len(query), 1)),
+            float("nan"),
+        ),
+    )
+    with pytest.raises(ValueError, match="non-finite"):
+        align(np.zeros((1, 64)), frozenset(), "H", 0.0)
+
+
+def test_non_finite_similarity_matrix_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise: {"H": (np.zeros((1, 64)), (1,))},
+    )
+    monkeypatch.setattr(
+        "sabr.alignment._align_reference",
+        lambda query, reference, positions: (
+            np.ones((len(query), 1)),
+            np.full((len(query), 1), np.inf),
+            1.0,
+        ),
+    )
+    with pytest.raises(ValueError, match="non-finite"):
+        align(np.zeros((1, 64)), frozenset(), "H", 0.0)

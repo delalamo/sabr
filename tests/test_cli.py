@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -168,6 +169,32 @@ def test_real_cli_round_trip(monkeypatch, tmp_path):
     assert list(parsed[0]["F"])[-1].id[1] == 128
 
 
+def test_8sve_cli_mmcif_round_trip_matches_full_golden(tmp_path):
+    golden = json.loads((DATA / "8sve_cdr1_imgt.json").read_text())
+    output = tmp_path / "8sve-numbered.cif"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "8sve_L.pdb"),
+            "-c",
+            "M",
+            "-o",
+            str(output),
+            "-t",
+            "K",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    parsed = MMCIFParser(QUIET=True).get_structure("output", output)
+    actual = [
+        [residue.id[1], residue.id[2].strip()]
+        for residue in parsed[0]["M"]
+        if not residue.id[0].strip()
+    ]
+    assert actual == [[item[2], item[3]] for item in golden["mapping"]]
+
+
 def test_cli_accepts_mmcif_input(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "renumber_structure", _passthrough())
     output = tmp_path / "numbered.cif"
@@ -183,6 +210,11 @@ def test_cli_accepts_mmcif_input(monkeypatch, tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
+    assert result.output == (
+        "WARNING: Non-atomic mmCIF categories may not be preserved by CLI "
+        "conversion; use the in-memory Gemmi API when metadata preservation "
+        "is required.\n"
+    )
     parsed = MMCIFParser(QUIET=True).get_structure("output", output)
     assert parsed[0]["A"]
 
@@ -233,6 +265,38 @@ def test_writer_failure_removes_partial_temporary_file(monkeypatch, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_cleanup_failure_does_not_replace_original_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "renumber_structure", _passthrough())
+
+    def fail_after_partial_write(structure, path):
+        path.write_text("partial")
+        raise OSError("original writer failure")
+
+    original_unlink = Path.unlink
+
+    def fail_temporary_cleanup(path, *args, **kwargs):
+        if path.name.startswith(".failed."):
+            raise OSError("cleanup failure")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli, "_write_structure", fail_after_partial_write)
+    monkeypatch.setattr(Path, "unlink", fail_temporary_cleanup)
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(tmp_path / "failed.pdb"),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "original writer failure" in result.output
+    assert "cleanup failure" in result.output
+
+
 def test_pdb_output_rejects_extended_insertion_codes():
     structure = PDBParser(QUIET=True).get_structure(
         "heavy", DATA / "test_heavy_chain.pdb"
@@ -240,7 +304,69 @@ def test_pdb_output_rejects_extended_insertion_codes():
     residue = list(structure[0]["F"])[0]
     residue.detach_parent()
     residue.id = (" ", residue.id[1], "AA")
-    with pytest.raises(ValueError, match="extended insertion codes"):
+    with pytest.raises(ValueError, match="printable ASCII insertion"):
+        cli._validate_pdb_output(structure)
+
+
+def test_verbose_mode_reports_backend_and_traceback(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "renumber_structure", _passthrough(fail=True))
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(tmp_path / "failed.pdb"),
+            "--verbose",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "JAX backend:" in result.output
+    assert "Traceback (most recent call last)" in result.output
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda chain, residue: setattr(chain, "id", "AB"), "chain character"),
+        (
+            lambda chain, residue: setattr(residue, "id", (" ", 10000, " ")),
+            "residue number",
+        ),
+        (
+            lambda chain, residue: setattr(residue, "id", (" ", -1000, " ")),
+            "residue number",
+        ),
+        (
+            lambda chain, residue: setattr(residue, "id", (" ", 1, "\x01")),
+            "insertion character",
+        ),
+    ],
+)
+def test_every_pdb_field_limit_is_validated(mutation, message):
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    chain = structure[0]["F"]
+    residue = list(chain)[0]
+    mutation(chain, residue)
+    with pytest.raises(ValueError, match=message):
+        cli._validate_pdb_output(structure)
+
+
+def test_pdb_atom_count_limit_is_validated(monkeypatch):
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    atom = next(structure.get_atoms())
+    monkeypatch.setattr(
+        structure,
+        "get_atoms",
+        lambda: (atom for _ in range(100_000)),
+    )
+    with pytest.raises(ValueError, match="99,999 atoms"):
         cli._validate_pdb_output(structure)
 
 

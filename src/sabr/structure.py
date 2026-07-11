@@ -1,9 +1,13 @@
 """Type-preserving BioPython and Gemmi structure handling."""
 
 import copy
+import functools
+import json
+from importlib.resources import files
 
 import gemmi
 import numpy as np
+from Bio.PDB.Residue import DisorderedResidue
 from Bio.PDB.Structure import Structure as BioStructure
 
 from sabr import constants
@@ -83,35 +87,91 @@ def _find_chain(structure, chain: str):
     raise ValueError(f"Chain '{chain}' not found. Available chains: {names}.")
 
 
-def _bio_residue_data(residue) -> tuple:
-    missing = [atom for atom in ("N", "CA", "C") if atom not in residue]
-    if missing:
-        label = f"{residue.resname} {residue.id[1]}{residue.id[2].strip()}"
+@functools.cache
+def _modified_residue_mapping() -> dict:
+    path = files("sabr.assets") / "modified_residues.json"
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)["mapping"]
+
+
+def _parent_residue_name(residue_name: str) -> str | None:
+    if residue_name in constants.AA_3TO1:
+        return residue_name
+    return _modified_residue_mapping().get(residue_name)
+
+
+def _altloc(value) -> str:
+    return str(value or "").strip(" \x00")
+
+
+def _select_backbone(atoms: list, label: str) -> tuple:
+    """Select one internally consistent N/CA/C conformer."""
+    names = ("N", "CA", "C")
+
+    def select_atom(name, altloc):
+        exact = [
+            atom for atom in atoms if atom[0] == name and atom[1] == altloc
+        ]
+        shared = [atom for atom in atoms if atom[0] == name and atom[1] == ""]
+        choices = exact or shared
+        if not choices:
+            return None
+        return max(choices, key=lambda atom: atom[2])
+
+    blank = [select_atom(name, "") for name in names]
+    if all(blank):
+        return tuple(atom[3] for atom in blank)
+
+    candidates = []
+    for altloc in sorted({atom[1] for atom in atoms if atom[1]}):
+        selected = [select_atom(name, altloc) for name in names]
+        if all(selected):
+            candidates.append(
+                (sum(atom[2] for atom in selected), altloc, selected)
+            )
+    if not candidates:
+        present = {atom[0] for atom in atoms}
+        missing = [name for name in names if name not in present]
+        if missing:
+            raise ValueError(
+                f"Residue {label} is missing required backbone atom(s): "
+                f"{', '.join(missing)}."
+            )
         raise ValueError(
-            f"Residue {label} is missing required backbone atom(s): "
-            f"{', '.join(missing)}."
+            f"Residue {label} has no complete backbone conformer because "
+            "its N, CA, and C atoms use incompatible altlocs."
         )
-    coords = tuple(
-        np.asarray(residue[atom].coord, dtype=np.float64)
-        for atom in ("N", "CA", "C")
-    )
-    return residue.id[1], residue.id[2].strip(), residue.resname, coords
+    _, _, selected = sorted(candidates, key=lambda item: (-item[0], item[1]))[0]
+    return tuple(atom[3] for atom in selected)
+
+
+def _bio_residue_data(residue) -> tuple:
+    label = f"{residue.resname} {residue.id[1]}{residue.id[2].strip()}"
+    atoms = [
+        (
+            atom.name,
+            _altloc(atom.altloc),
+            float(atom.occupancy or 0.0),
+            np.asarray(atom.coord, dtype=np.float64),
+        )
+        for atom in residue.get_unpacked_list()
+        if atom.name in ("N", "CA", "C")
+    ]
+    return _select_backbone(atoms, label)
 
 
 def _gemmi_residue_data(residue) -> tuple:
-    atoms = [residue.find_atom(name, "*") for name in ("N", "CA", "C")]
-    missing = [name for name, atom in zip(("N", "CA", "C"), atoms) if not atom]
-    if missing:
-        label = f"{residue.name} {residue.seqid}"
-        raise ValueError(
-            f"Residue {label} is missing required backbone atom(s): "
-            f"{', '.join(missing)}."
+    atoms = [
+        (
+            atom.name,
+            _altloc(atom.altloc),
+            float(atom.occ if np.isfinite(atom.occ) else 0.0),
+            np.asarray((atom.pos.x, atom.pos.y, atom.pos.z), dtype=np.float64),
         )
-    coords = tuple(
-        np.asarray((atom.pos.x, atom.pos.y, atom.pos.z), dtype=np.float64)
-        for atom in atoms
-    )
-    return residue.seqid.num, residue.seqid.icode.strip(), residue.name, coords
+        for atom in residue
+        if atom.name in ("N", "CA", "C")
+    ]
+    return _select_backbone(atoms, f"{residue.name} {residue.seqid}")
 
 
 def _detect_gaps(coords: np.ndarray) -> frozenset:
@@ -136,27 +196,114 @@ def extract_chain(
     sequence = []
     residue_ids = []
     residue_indices = []
+    normalized = []
+    unknown_hetero = []
+    polymer_ids = set()
 
     for index, residue in enumerate(target):
         if is_biopython:
-            is_polymer = not residue.id[0].strip()
             number = residue.id[1]
+            insertion_code = residue.id[2].strip()
+            residue_name = residue.resname
+            is_atom_record = not residue.id[0].strip()
         else:
-            is_polymer = residue.het_flag == "A"
             number = residue.seqid.num
-        if not is_polymer:
-            continue
+            insertion_code = residue.seqid.icode.strip()
+            residue_name = residue.name
+            is_atom_record = residue.het_flag == "A"
         if residue_range is not None and not (
             residue_range[0] <= number <= residue_range[1]
         ):
             continue
+        if is_biopython and isinstance(residue, DisorderedResidue):
+            raise ValueError(
+                f"Residue {number}{insertion_code} has ambiguous "
+                "microheterogeneous residue names."
+            )
 
-        data = (
+        parent_name = _parent_residue_name(residue_name)
+        if parent_name is None and is_atom_record:
+            raise ValueError(
+                f"Unsupported polymer residue {residue_name} "
+                f"{number}{insertion_code}."
+            )
+        if (
+            parent_name is None
+            and gemmi.find_tabulated_residue(residue_name).is_amino_acid()
+        ):
+            raise ValueError(
+                f"Unsupported polymer residue {residue_name} "
+                f"{number}{insertion_code}; the pinned CCD snapshot has no "
+                "single canonical parent."
+            )
+        if parent_name is None:
+            try:
+                backbone = (
+                    _bio_residue_data(residue)
+                    if is_biopython
+                    else _gemmi_residue_data(residue)
+                )
+            except ValueError:
+                continue
+            unknown_hetero.append(
+                (index, residue_name, number, insertion_code, backbone)
+            )
+            continue
+
+        residue_key = (number, insertion_code)
+        if residue_key in polymer_ids:
+            raise ValueError(
+                f"Residue {number}{insertion_code} has ambiguous "
+                "microheterogeneous residue names."
+            )
+        polymer_ids.add(residue_key)
+        backbone = (
             _bio_residue_data(residue)
             if is_biopython
             else _gemmi_residue_data(residue)
         )
-        number, insertion_code, residue_name, backbone = data
+        normalized.append(
+            (
+                index,
+                number,
+                insertion_code,
+                parent_name,
+                backbone,
+            )
+        )
+
+    for index, residue_name, number, insertion_code, backbone in unknown_hetero:
+        previous = next(
+            (entry for entry in reversed(normalized) if entry[0] < index),
+            None,
+        )
+        following = next(
+            (entry for entry in normalized if entry[0] > index),
+            None,
+        )
+        connected = (
+            previous is not None
+            and np.linalg.norm(previous[4][2] - backbone[0])
+            <= constants.PEPTIDE_BOND_MAX_DISTANCE
+        ) or (
+            following is not None
+            and np.linalg.norm(backbone[2] - following[4][0])
+            <= constants.PEPTIDE_BOND_MAX_DISTANCE
+        )
+        if connected:
+            raise ValueError(
+                f"Unsupported peptide-linked residue {residue_name} "
+                f"{number}{insertion_code}."
+            )
+
+    if len(normalized) > constants.MAX_SELECTED_RESIDUES:
+        raise ValueError(
+            f"Selected chain contains {len(normalized)} polymer residues; "
+            f"the safety limit is {constants.MAX_SELECTED_RESIDUES}. Use "
+            "residue_range to select one antibody domain."
+        )
+
+    for index, number, insertion_code, parent_name, backbone in normalized:
         n_coord, ca_coord, c_coord = backbone
         residue_coords = np.stack(
             (
@@ -171,7 +318,7 @@ def extract_chain(
                 f"Residue {number}{insertion_code} has non-finite coordinates."
             )
         coords.append(residue_coords)
-        sequence.append(constants.AA_3TO1.get(residue_name, "X"))
+        sequence.append(constants.AA_3TO1[parent_name])
         residue_ids.append((number, insertion_code))
         residue_indices.append(index)
 
@@ -191,35 +338,45 @@ def extract_chain(
     )
 
 
-def _new_residue_ids(data: _ChainData, numbered: list, first_row: int) -> dict:
+def _new_residue_ids(data: _ChainData, numbered: list) -> dict:
     if not numbered:
         raise ValueError("ANARCI returned no numbered residues.")
+    query_rows = [record[0] for record in numbered]
+    if query_rows != sorted(set(query_rows)):
+        raise ValueError("ANARCI returned duplicate or unordered query rows.")
+    if query_rows[0] < 0 or query_rows[-1] >= len(data.sequence):
+        raise ValueError("ANARCI returned a query row outside the structure.")
+    if query_rows != list(range(query_rows[0], query_rows[-1] + 1)):
+        raise ValueError("ANARCI left an unnumbered internal query row.")
+
     mapping = {}
-    first_number = numbered[0][0][0]
+    first_row, first_number = numbered[0][:2]
+    first_assigned_number = first_number - first_row
+    if first_assigned_number < 1:
+        raise ValueError(
+            "N-terminal residues would require non-positive numbering; "
+            "use residue_range to select the antibody domain."
+        )
     for query_index in range(first_row):
         mapping[data.residue_indices[query_index]] = (
-            first_number - (first_row - query_index),
+            first_assigned_number + query_index,
             "",
         )
 
-    numbered_index = 0
-    last_number = first_number - 1
-    for query_index in range(first_row, len(data.sequence)):
-        if numbered_index < len(numbered):
-            (number, insertion_code), expected = numbered[numbered_index]
-            actual = data.sequence[query_index]
-            if expected != actual:
-                original = data.residue_ids[query_index]
-                raise ValueError(
-                    f"Residue mismatch at {original[0]}{original[1]}: "
-                    f"ANARCI expected {expected}, structure contains {actual}."
-                )
-            last_number = number
-            numbered_index += 1
-        else:
-            last_number += 1
-            number, insertion_code = last_number, ""
+    for query_index, number, insertion_code, expected in numbered:
+        actual = data.sequence[query_index]
+        if expected != actual:
+            original = data.residue_ids[query_index]
+            raise ValueError(
+                f"Residue mismatch at {original[0]}{original[1]}: "
+                f"ANARCI expected {expected}, structure contains {actual}."
+            )
         mapping[data.residue_indices[query_index]] = (number, insertion_code)
+
+    last_row, last_number = numbered[-1][:2]
+    for query_index in range(last_row + 1, len(data.sequence)):
+        last_number += 1
+        mapping[data.residue_indices[query_index]] = (last_number, "")
     return mapping
 
 
@@ -258,10 +415,9 @@ def apply_numbering(
     chain: str,
     data: _ChainData,
     numbered: list,
-    first_row: int,
 ):
     """Return a same-type clone with numbering applied to selected residues."""
-    mapping = _new_residue_ids(data, numbered, first_row)
+    mapping = _new_residue_ids(data, numbered)
     _check_collisions(structure, chain, mapping)
 
     if isinstance(structure, BioStructure):

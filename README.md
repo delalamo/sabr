@@ -41,6 +41,10 @@ Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
 Writes are atomic, so a failed run does not leave a partial output.
 
+CLI conversion guarantees preservation of atomic structure content, not
+arbitrary non-atomic mmCIF categories. It warns for every mmCIF input. When
+those categories matter, load a Gemmi structure and use the in-memory API.
+
 ## Python API
 
 ```python
@@ -75,6 +79,22 @@ structures rather than silently modifying only one model. If a partial range
 would create duplicate residue IDs with unchanged residues, the operation
 fails with an explanation.
 
+The same-type clone preserves metadata represented by the input BioPython or
+Gemmi object. Alternate conformers are normalized deterministically: a
+complete blank-altloc backbone is preferred, then the complete conformer with
+the greatest summed occupancy, with altloc name as the final tie-breaker.
+Selections above 1,024 polymer residues are rejected before quadratic model
+work; use `residue_range` to select the antibody domain.
+
+Modified peptide residues are translated only for sequence generation. Their
+original names and atoms remain unchanged. The committed mapping was generated
+from the wwPDB Chemical Component Dictionary snapshot dated 2026-07-11
+(`components.cif.gz` SHA-256
+`0b3323123ec10b997afe1c530b4cad30306e60b451b2b062c59bc9bb5cbe0679`) and
+contains only peptide-linking components with exactly one canonical amino-acid
+parent. Unsupported or ambiguous polymer chemistry fails explicitly; no
+runtime network access occurs.
+
 Gemmi itself only represents one-character insertion codes. For unusually
 long loops that need extended codes, use a BioPython structure in memory or
 the CLI with mmCIF output.
@@ -97,10 +117,14 @@ correction and emits a warning; other regions continue normally.
 ## Development
 
 ```bash
-pip install -e '.[test]'
+pip install -c constraints.txt -e '.[test]'
 JAX_PLATFORMS=cpu pytest
 pre-commit run --all-files
 ```
+
+`constraints.txt` records the exact canonical development and CI environment.
+Package metadata remains ranged for normal installation. SAbR does not force a
+JAX backend; CPU is simply the canonical CI regression baseline.
 
 The committed tests are self-contained and never download data. They verify
 the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
