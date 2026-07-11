@@ -84,8 +84,6 @@ def _find_chain(structure, chain: str):
 
 
 def _bio_residue_data(residue) -> tuple:
-    if residue.id[0].strip():
-        return None
     missing = [atom for atom in ("N", "CA", "C") if atom not in residue]
     if missing:
         label = f"{residue.resname} {residue.id[1]}{residue.id[2].strip()}"
@@ -101,8 +99,6 @@ def _bio_residue_data(residue) -> tuple:
 
 
 def _gemmi_residue_data(residue) -> tuple:
-    if residue.het_flag != "A":
-        return None
     atoms = [residue.find_atom(name, "*") for name in ("N", "CA", "C")]
     missing = [name for name, atom in zip(("N", "CA", "C"), atoms) if not atom]
     if missing:

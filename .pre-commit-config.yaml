@@ -24,14 +24,3 @@ repos:
         args:
           - "--max-line-length=80"
           - "--extend-ignore=E203,W503"
-
-  - repo: https://github.com/PyCQA/pylint
-    rev: v3.3.7
-    hooks:
-      - id: pylint
-        exclude: ^src/sabr/_anarci/
-        args:
-          - "--disable=all"
-          - "--enable=C0415"
-          - "--score=n"
-        name: pylint (no lazy imports)

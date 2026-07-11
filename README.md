@@ -29,14 +29,13 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [--residue-range START END]
-     [--random-seed INTEGER]
      [--overwrite] [-v]
 ```
 
 Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
-random seed `0`, and the entire selected chain. Existing outputs are never
-replaced unless `--overwrite` is given. Normal output contains only warnings
-and errors; `-v` reports reference scores and pipeline decisions.
+and the entire selected chain. Existing outputs are never replaced unless
+`--overwrite` is given. Normal output contains only warnings and errors; `-v`
+reports reference scores and pipeline decisions.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
@@ -66,7 +65,6 @@ numbered = renumber_structure(
     chain_type="auto",
     noise_level=0.0,
     residue_range=None,
-    random_seed=0,
 )
 ```
 

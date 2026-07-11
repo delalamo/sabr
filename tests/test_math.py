@@ -3,6 +3,7 @@ from pathlib import Path
 
 import gemmi
 import numpy as np
+import pytest
 
 from sabr import constants
 from sabr.alignment import (
@@ -57,7 +58,7 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
     baseline = np.load(DATA / "math_baseline.npz")
     structure = gemmi.read_structure(str(DATA / "test_heavy_chain.pdb"))
     data = extract_chain(structure, "F", None)
-    embeddings = encode(data.coords, random_seed=0)
+    embeddings = encode(data.coords)
     np.testing.assert_allclose(
         embeddings, baseline["embeddings"], rtol=1e-5, atol=1e-6
     )
@@ -123,5 +124,30 @@ def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
         "sabr.alignment.apply_corrections",
         lambda alignment, chain_type, gap_indices: alignment,
     )
-    _, selected, _, _ = align(np.zeros((1, 64)), frozenset(), "auto", 0.0)
+    _, selected, _ = align(np.zeros((1, 64)), frozenset(), "auto", 0.0)
     assert selected == "H"
+
+
+@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
+def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
+    references = {
+        candidate: (np.full((1, 64), index), [1])
+        for index, candidate in enumerate(constants.CHAIN_TYPES)
+    }
+    seen = []
+
+    def fake_align(query, reference, positions):
+        seen.append(int(reference[0, 0]))
+        return np.ones((len(query), 1)), np.zeros((len(query), 3)), 1.0
+
+    monkeypatch.setattr(
+        "sabr.alignment.load_references", lambda noise: references
+    )
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, selected, gap_indices: alignment,
+    )
+    _, selected, _ = align(np.zeros((1, 64)), frozenset(), chain_type, 0.0)
+    assert selected == chain_type
+    assert seen == [constants.CHAIN_TYPES.index(chain_type)]

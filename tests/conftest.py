@@ -22,7 +22,7 @@ def aligned_cases():
     for expected, (path, chain) in cases.items():
         structure = parser.get_structure(expected, path)
         data = extract_chain(structure, chain, None)
-        alignment, selected, score, similarity = align(
+        alignment, selected, score = align(
             encode(data.coords), data.gap_indices, "auto", 0.0
         )
         results[expected] = {
@@ -30,8 +30,6 @@ def aligned_cases():
             "chain": chain,
             "data": data,
             "path": path,
-            "score": score,
             "selected": selected,
-            "similarity": similarity,
         }
     return results

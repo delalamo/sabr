@@ -60,11 +60,6 @@ class SafeKey:
         new_keys = jax.random.split(self._key, num_keys)
         return jax.tree_util.tree_map(SafeKey, tuple(new_keys))
 
-    def duplicate(self, num_keys: int = 2):
-        self._assert_not_used()
-        self._used = True
-        return tuple(SafeKey(self._key) for _ in range(num_keys))
-
 
 def gather_edges(edges, neighbor_idx):
     """Gather edge features at neighbor indices.
@@ -494,7 +489,7 @@ def _encode(coords, mask, chain_ids, residue_indices):
 _TRANSFORMED_ENCODER = hk.transform(_encode)
 
 
-def encode(coords: np.ndarray, random_seed: int = 0) -> np.ndarray:
+def encode(coords: np.ndarray) -> np.ndarray:
     """Return the trained 64-dimensional embedding for each residue."""
     n_residues = coords.shape[0]
     batched_coords = coords[None, :]
@@ -503,7 +498,7 @@ def encode(coords: np.ndarray, random_seed: int = 0) -> np.ndarray:
     residue_indices = np.arange(n_residues)[None, :]
     result = _TRANSFORMED_ENCODER.apply(
         load_parameters(),
-        jax.random.PRNGKey(random_seed),
+        jax.random.PRNGKey(0),
         batched_coords,
         mask,
         chain_ids,

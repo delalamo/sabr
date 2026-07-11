@@ -37,7 +37,7 @@ def _stub_pipeline(monkeypatch):
     monkeypatch.setattr(
         api,
         "encode",
-        lambda coords, random_seed=0: np.zeros((len(coords), 64)),
+        lambda coords: np.zeros((len(coords), 64)),
     )
     monkeypatch.setattr(
         api,
@@ -46,7 +46,6 @@ def _stub_pipeline(monkeypatch):
             np.zeros((len(embeddings), 128), dtype=int),
             "H" if chain_type == "auto" else chain_type,
             0.0,
-            None,
         ),
     )
     monkeypatch.setattr(
@@ -163,6 +162,18 @@ def test_missing_backbone_is_reported_with_the_residue():
         renumber_structure(structure, "A")
 
 
+@pytest.mark.parametrize(
+    ("chain", "message"),
+    [("", "non-empty"), ("missing", "not found")],
+)
+def test_invalid_or_missing_chain_is_reported(chain, message):
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    with pytest.raises(ValueError, match=message):
+        renumber_structure(structure, chain)
+
+
 def test_missing_backbone_outside_selected_range_is_ignored():
     structure = PDBParser(QUIET=True).get_structure(
         "heavy", DATA / "test_heavy_chain.pdb"
@@ -192,7 +203,8 @@ def test_multiple_models_are_rejected():
         ({"noise_level": 0.3}, "noise_level"),
         ({"residue_range": [1, 2]}, "residue_range"),
         ({"residue_range": (2, 1)}, "start"),
-        ({"random_seed": -1}, "random_seed"),
+        ({"chain_type": None}, "chain_type"),
+        ({"noise_level": "invalid"}, "noise_level"),
     ],
 )
 def test_invalid_public_options_fail_before_model_execution(kwargs, message):

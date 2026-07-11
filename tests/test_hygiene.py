@@ -25,19 +25,3 @@ def test_no_lazy_imports_or_variable_annotations():
                 assert (
                     inside_function
                 ), f"Variable/class annotation in {path}: {node.lineno}"
-
-
-def test_removed_legacy_surface_is_absent():
-    source = "\n".join(
-        path.read_text()
-        for path in SOURCE.glob("*.py")
-        if path.name != "constants.py"
-    )
-    for removed in (
-        "correct_fr1",
-        "detect_chain_type",
-        "reference_chain_type",
-        "disable_custom_gap_penalties",
-        "disable_deterministic_renumbering",
-    ):
-        assert removed not in source

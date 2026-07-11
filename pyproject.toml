@@ -66,3 +66,10 @@ extend-ignore = ["E203", "W503"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["src/sabr/_anarci/*"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true

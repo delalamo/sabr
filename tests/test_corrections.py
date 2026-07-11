@@ -1,13 +1,14 @@
+import warnings
+
 import numpy as np
 import pytest
 
-import sabr.corrections as corrections
 from sabr.corrections import (
     apply_corrections,
+    cdr_columns,
     correct_c_terminus,
     correct_cdr_loop,
-    correct_fr3_alignment,
-    correct_gap_numbering,
+    correct_light_chain_de_loop,
 )
 
 
@@ -19,18 +20,33 @@ from sabr.corrections import (
     ],
 )
 def test_cdr_gaps_follow_the_imgt_alternating_pattern(residues, positions):
-    corrected = correct_gap_numbering(np.zeros((residues, 13), dtype=int))
-    assert corrected.sum() == residues
-    assert list(np.where(corrected == 1)[1]) == positions
-    assert corrected[0, 0] == 1
-    assert corrected[-1, -1] == 1
+    assert cdr_columns(residues, 13) == positions
+
+
+def test_cdr_overflow_leaves_central_residues_as_insertions():
+    assert cdr_columns(14, 13) == [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        None,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+    ]
 
 
 def test_light_chain_de_loop_moves_81_and_82_to_83_and_84():
     alignment = np.zeros((4, 128), dtype=int)
     alignment[0, 80] = 1
     alignment[1, 81] = 1
-    corrected = correct_fr3_alignment(alignment)
+    corrected = correct_light_chain_de_loop(alignment)
     assert corrected[0, 82] == 1
     assert corrected[1, 83] == 1
     assert corrected[:, 80:82].sum() == 0
@@ -42,7 +58,7 @@ def test_light_chain_de_loop_clears_sources_when_targets_are_occupied():
     alignment[1, 81] = 1
     alignment[2, 82] = 1
     alignment[3, 83] = 1
-    corrected = correct_fr3_alignment(alignment)
+    corrected = correct_light_chain_de_loop(alignment)
     assert corrected[:, 80:82].sum() == 0
     assert corrected[2, 82] == 1
     assert corrected[3, 83] == 1
@@ -55,7 +71,9 @@ def test_gap_outside_de_loop_does_not_skip_its_correction():
     alignment[72, 80] = 1
     alignment[73, 81] = 1
     alignment[75, 83] = 1
-    corrected = correct_fr3_alignment(alignment, gap_indices=frozenset({10}))
+    corrected = correct_light_chain_de_loop(
+        alignment, gap_indices=frozenset({10})
+    )
     assert corrected[72, 82] == 1
     assert corrected[73, 81] == 0
     assert corrected[75, 83] == 1
@@ -83,6 +101,30 @@ def test_structural_gap_skips_each_affected_cdr(name, start, end, anchors):
             gap_indices=frozenset({7}),
         )
     np.testing.assert_array_equal(corrected, original)
+
+
+def test_multiple_structural_gaps_warn_for_only_the_affected_regions():
+    alignment = np.eye(128, dtype=int)
+    with pytest.warns(UserWarning) as captured:
+        corrected = apply_corrections(
+            alignment.copy(), "H", gap_indices=frozenset({30, 58})
+        )
+    assert [str(item.message) for item in captured] == [
+        "Skipping CDR1 deterministic correction: structural gap detected "
+        "between rows 22 and 39; using the raw embedding alignment for "
+        "this region.",
+        "Skipping CDR2 deterministic correction: structural gap detected "
+        "between rows 53 and 66; using the raw embedding alignment for "
+        "this region.",
+    ]
+    np.testing.assert_array_equal(corrected, alignment)
+
+
+def test_gap_outside_corrected_regions_emits_no_warning():
+    alignment = np.eye(128, dtype=int)
+    with warnings.catch_warnings(record=True) as captured:
+        apply_corrections(alignment.copy(), "H", gap_indices=frozenset({10}))
+    assert captured == []
 
 
 def test_de_loop_gap_does_not_prevent_c_terminal_correction():
@@ -145,8 +187,3 @@ def test_c_terminal_assigns_one_trailing_residue():
 def test_c_terminal_handles_an_empty_alignment():
     alignment = np.zeros((100, 128), dtype=int)
     np.testing.assert_array_equal(correct_c_terminus(alignment), alignment)
-
-
-def test_fr1_position_10_correction_is_completely_removed():
-    assert not hasattr(corrections, "correct_fr1_alignment")
-    assert "FR1" not in corrections.__doc__

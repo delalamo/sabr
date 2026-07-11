@@ -16,7 +16,6 @@ def _validate_options(
     chain_type: str,
     noise_level: float,
     residue_range: tuple | None,
-    random_seed: int,
 ) -> tuple:
     if (
         not isinstance(scheme, str)
@@ -53,8 +52,6 @@ def _validate_options(
             )
         if residue_range[0] > residue_range[1]:
             raise ValueError("residue_range start must not exceed its end.")
-    if not isinstance(random_seed, int) or random_seed < 0:
-        raise ValueError("random_seed must be a non-negative integer.")
     return scheme.lower(), normalized_chain_type, normalized_noise
 
 
@@ -65,15 +62,14 @@ def renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
-    random_seed: int = 0,
 ):
     """Return a non-mutating, same-type renumbered structure."""
     scheme, chain_type, noise_level = _validate_options(
-        scheme, chain_type, noise_level, residue_range, random_seed
+        scheme, chain_type, noise_level, residue_range
     )
     data = extract_chain(structure, chain, residue_range)
-    embeddings = encode(data.coords, random_seed=random_seed)
-    imgt_alignment, selected_type, score, _ = align(
+    embeddings = encode(data.coords)
+    imgt_alignment, selected_type, score = align(
         embeddings,
         data.gap_indices,
         chain_type,
