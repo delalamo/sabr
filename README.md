@@ -7,6 +7,9 @@ the original affine Smith–Waterman alignment and ANARCI numbering rules.
 SAbR is intentionally small and feature-complete. It provides one Python API
 and one command-line program.
 
+The complete usage guide is available in the
+[SAbR documentation](https://sabr.readthedocs.io/).
+
 ## Installation
 
 SAbR requires Python 3.11 or newer.

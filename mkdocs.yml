@@ -1,0 +1,10 @@
+site_name: SAbR
+site_description: Structure-based antibody renumbering
+repo_url: https://github.com/delalamo/SAbR
+theme:
+  name: readthedocs
+nav:
+  - Usage: index.md
+markdown_extensions:
+  - fenced_code
+  - tables
