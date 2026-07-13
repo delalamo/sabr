@@ -1,19 +1,55 @@
-name: Tests
-permissions:
-  contents: read
+name: Python checks
+
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -c constraints.txt pre-commit
+      - run: pre-commit run --all-files
+
   test:
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
-      - uses: ./.github/actions/setup-python
-      - run: pip install -e .[test]
-      - name: Run all tests (including slow tests)
-        run: pytest -m "" --cov=sabr --cov-report=term-missing
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -c constraints.txt -e '.[test]'
+      - run: JAX_PLATFORMS=cpu pytest --cov=sabr
+
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -c constraints.txt build
+      - run: python -m build
+      - run: python -m venv /tmp/sabr-wheel-test
+      - run: /tmp/sabr-wheel-test/bin/pip install -c constraints.txt dist/*.whl
+      - run: /tmp/sabr-wheel-test/bin/python -c "import sabr"
+      - run: /tmp/sabr-wheel-test/bin/sabr --help
+      - run: /tmp/sabr-wheel-test/bin/sabr --version

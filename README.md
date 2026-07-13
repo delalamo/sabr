@@ -1,131 +1,151 @@
-# Structure-based Antibody Renumbering
+# SAbR
 
-[![Tests](https://github.com/delalamo/SAbR/actions/workflows/test.yml/badge.svg)](https://github.com/delalamo/SAbR/actions/workflows/test.yml)
-[![Code Formatting](https://github.com/delalamo/SAbR/actions/workflows/format.yml/badge.svg)](https://github.com/delalamo/SAbR/actions/workflows/format.yml)
-[![Documentation](https://readthedocs.org/projects/sabr/badge/?version=latest)](https://sabr.readthedocs.io/en/latest/)
-[![PyPI version](https://img.shields.io/pypi/v/sabr-kit.svg)](https://pypi.org/project/sabr-kit/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+SAbR (Structure-based Antibody Renumbering) assigns antibody residue numbers
+from backbone coordinates. It combines the original trained Haiku encoder with
+the original affine Smith–Waterman alignment and ANARCI numbering rules.
 
-SAbR (<u>S</U>tructure-based <u>A</u>nti<u>b</u>ody <u>R</u>enumbering) renumbers antibody PDB files using the 3D coordinate of backbone atoms. It uses custom forked versions of [SoftAlign](https://github.com/delalamo/SoftAlign) and [ANARCI](https://github.com/delalamo/ANARCI/tree/master) to align structures to SAbDaB-derived consensus embeddings and renumber to various antibody schemes, respectively.
+SAbR is intentionally small and feature-complete. It provides one Python API
+and one command-line program.
 
-## Documentation
+The complete usage guide is available in the
+[SAbR documentation](https://sabr.readthedocs.io/).
 
-Full API documentation is available at [sabr.readthedocs.io](https://sabr.readthedocs.io/).
+## Installation
 
-## Installation and use
-
-**Requirements:** Python 3.11 or higher
-
-1. SAbR can be installed into a virtual environment via pip:
+SAbR requires Python 3.11 or newer.
 
 ```bash
-# Latest release
 pip install sabr-kit
-
-# Most recent version from Github
-git clone --recursive https://github.com/delalamo/SAbR.git
-cd SAbR/
-pip install -e .
 ```
 
-It can then be run using the `sabr` command (see below).
-
-2. Alternatively, SAbR can be directly run with the latest docker container:
+## Command line
 
 ```bash
-docker run --rm ghcr.io/delalamo/sabr:latest -i input.pdb -o output.pdb -c CHAIN_ID
+sabr -i antibody.pdb -c H -o numbered.pdb
 ```
 
-## Running SAbR
+The complete interface is:
 
-Practical considerations:
-
-- Heavy and light chain structures are similar enough that chain type should be manually declared with `--chain-type` if possible (leave blank if uncertain).
-- It is recommended for now to truncate the query structure to contain only the Fv when running SAbR, as it will sometimes align variable region beta-strands to those in the constant region.
-- When running scFvs, it is recommended to run each variable domain independently.
-
-If running on a Mac with apple silicon, set the environmental variable `JAX_PLATFORMS` to `cpu`.
-
-```bash
-Usage: sabr [OPTIONS]
-
-  Structure-based Antibody Renumbering (SAbR) renumbers antibody structure
-  files using the 3D coordinates of backbone atoms. Supports both PDB and
-  mmCIF input formats.
-
-Options:
-  -i, --input-pdb FILE            Input structure file (PDB or mmCIF format).
-                                  [required]
-  -c, --input-chain TEXT          Chain identifier to renumber (single
-                                  character).  [required]
-  -o, --output FILE               Destination structure file. Use .pdb
-                                  extension for PDB format or .cif extension
-                                  for mmCIF format. mmCIF is required for
-                                  antibodies with extended insertion codes
-                                  (e.g., very long CDR loops).  [required]
-  -n, --numbering-scheme [imgt|chothia|kabat|martin|aho|wolfguy]
-                                  Numbering scheme.  [default: IMGT]
-  -t, --chain-type [H|K|L|heavy|kappa|lambda|auto]
-                                  Chain type for ANARCI numbering.
-                                  H/heavy=heavy chain, K/kappa=kappa light,
-                                  L/lambda=lambda light. Use 'auto' (default)
-                                  to detect from DE loop occupancy.
-                                  [default: auto]
-  --overwrite                     Overwrite the output file if it already
-                                  exists.
-  -v, --verbose                   Enable verbose logging.
-  --residue-range START END       Range of residues to process in PDB
-                                  numbering (inclusive). Use '0 0' (default)
-                                  to process all residues. Example:
-                                  --residue-range 1 120 processes residues
-                                  1-120.
-  --random-seed INTEGER           Random seed for JAX operations. If not
-                                  specified, a random seed will be generated.
-                                  Set this for reproducible results.
-  --disable-deterministic-renumbering
-                                  Disable deterministic renumbering corrections
-                                  for loop regions. By default, corrections are
-                                  applied for FR1, DE loop, and CDR loops.
-  --disable-custom-gap-penalties  Disable custom gap penalties for alignment.
-                                  By default, custom penalties are applied
-                                  including: zero gap open penalty in CDR
-                                  regions (IMGT 27-38, 56-65, 105-117), zero
-                                  gap open at position 10, and overhang
-                                  penalties at sequence termini.
-  -h, --help                      Show this message and exit.
+```text
+sabr -i INPUT -c CHAIN -o OUTPUT
+     [-n imgt|chothia|kabat|martin|aho|wolfguy]
+     [-t auto|H|K|L]
+     [--noise-level 0.0|0.2|0.5|1.0|2.0]
+     [--residue-range START END]
+     [--overwrite] [-v]
 ```
+
+Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
+and the entire selected chain. Existing outputs are never replaced unless
+`--overwrite` is given. Normal output contains only warnings and errors; `-v`
+reports reference scores and pipeline decisions.
+
+Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
+when chain names or ANARCI insertion codes exceed PDB's one-character fields.
+Writes are atomic, so a failed run does not leave a partial output.
+
+CLI conversion guarantees preservation of atomic structure content, not
+arbitrary non-atomic mmCIF categories. It warns for every mmCIF input. When
+those categories matter, load a Gemmi structure and use the in-memory API.
 
 ## Python API
 
-SAbR can also be used programmatically to renumber BioPython Structure objects directly in memory:
+```python
+from Bio.PDB import PDBParser
+from sabr import renumber_structure
+
+structure = PDBParser(QUIET=True).get_structure("antibody", "antibody.pdb")
+numbered = renumber_structure(structure, chain="H")
+```
+
+Gemmi structures use the same function:
 
 ```python
-from Bio.PDB import PDBParser, PDBIO
-from sabr import renumber
+import gemmi
+from sabr import renumber_structure
 
-# Load a structure
-parser = PDBParser(QUIET=True)
-structure = parser.get_structure("antibody", "input.pdb")
-
-# Renumber the structure (returns a new BioPython Structure)
-renumbered = renumber.renumber_structure(
+structure = gemmi.read_structure("antibody.cif")
+numbered = renumber_structure(
     structure,
-    chain="H",                      # Chain identifier
-    numbering_scheme="imgt",        # imgt, chothia, kabat, martin, aho, wolfguy
-    chain_type="auto",              # H, K, L, or auto
+    chain="heavy_chain",
+    scheme="chothia",
+    chain_type="auto",
+    noise_level=0.0,
+    residue_range=None,
 )
-
-# Optionally specify a residue range
-renumbered = renumber.renumber_structure(
-    structure,
-    chain="H",
-    res_start=1,                    # Start at residue 1
-    res_end=128,                    # End at residue 128
-)
-
-# Save the renumbered structure
-io = PDBIO()
-io.set_structure(renumbered)
-io.save("output.pdb")
 ```
+
+`renumber_structure` never mutates its input and returns the same concrete
+structure type. Non-target chains, hetero residues, waters, and residues
+outside an inclusive `residue_range` are preserved. SAbR rejects multi-model
+structures rather than silently modifying only one model. If a partial range
+would create duplicate residue IDs with unchanged residues, the operation
+fails with an explanation.
+
+The same-type clone preserves metadata represented by the input BioPython or
+Gemmi object. Alternate conformers are normalized deterministically: a
+complete blank-altloc backbone is preferred, then the complete conformer with
+the greatest summed occupancy, with altloc name as the final tie-breaker.
+Selections above 1,024 polymer residues are rejected before quadratic model
+work; use `residue_range` to select the antibody domain.
+
+Modified peptide residues are translated only for sequence generation. Their
+original names and atoms remain unchanged. The committed mapping was generated
+from the wwPDB Chemical Component Dictionary snapshot dated 2026-07-11
+(`components.cif.gz` SHA-256
+`0b3323123ec10b997afe1c530b4cad30306e60b451b2b062c59bc9bb5cbe0679`) and
+contains only peptide-linking components with exactly one canonical amino-acid
+parent. Unsupported or ambiguous polymer chemistry fails explicitly; no
+runtime network access occurs.
+
+Gemmi itself only represents one-character insertion codes. For unusually
+long loops that need extended codes, use a BioPython structure in memory or
+the CLI with mmCIF output.
+
+## Scientific behavior
+
+- The trained encoder weights and Haiku operations are unchanged.
+- Alignment uses the original differentiable affine Smith–Waterman method.
+- Gap extension is `-0.175027` and gap opening is `-2.525591`.
+- Gap opening is zero only in IMGT CDR1 27–38, CDR2 56–65, and CDR3 105–117.
+- CDR gap distribution, light-chain DE-loop placement, and C-terminal
+  correction are always applied.
+- Automatic chain selection aligns against H, K, and L references and uses
+  the highest score, with deterministic H/K/L tie order.
+
+A structural gap is detected when the C–N distance between consecutive
+residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop
+correction and emits a warning; other regions continue normally.
+
+## Development
+
+```bash
+pip install -c constraints.txt -e '.[test]'
+JAX_PLATFORMS=cpu pytest
+pre-commit run --all-files
+```
+
+`constraints.txt` records the exact canonical development and CI environment.
+Package metadata remains ranged for normal installation. SAbR does not force a
+JAX backend; CPU is simply the canonical CI regression baseline.
+
+The committed tests are self-contained and never download data. They verify
+the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
+H/K/L selection, regional corrections, structure-object behavior, and CLI
+failure handling.
+
+## Deferred full benchmark
+
+The historical pre-2021 SAbDab manifest contains approximately 1,012 chains.
+The current method scores about 90% on that set, not 100%. The full corpus is
+not bundled or downloaded by CI.
+
+Future benchmark work should create a checksum-pinned corpus, verify residue
+IDs, insertion codes, and coordinate parity, and compare a lossless archive
+with Foldcomp before adding a separate manual or nightly workflow. This is a
+benchmarking TODO, not a unit-test or release requirement.
+
+## License and attribution
+
+SAbR is distributed under the repository license. The vendored ANARCI
+numbering code retains its original license in `src/sabr/_anarci/LICENSE`.
