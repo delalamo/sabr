@@ -133,16 +133,10 @@ _AFFINE_ALIGNMENT = jax.jit(
 
 
 def create_gap_penalties(query_length: int, positions: list) -> tuple:
-    """Create the fixed position-dependent affine gap penalties."""
+    """Create fixed affine gap penalties."""
     shape = (query_length, len(positions))
     gap_extend = np.full(shape, constants.SW_GAP_EXTEND, dtype=np.float32)
     gap_open = np.full(shape, constants.SW_GAP_OPEN, dtype=np.float32)
-    cdr_positions = set()
-    for start, end in constants.IMGT_LOOPS.values():
-        cdr_positions.update(range(start, end + 1))
-    for column, position in enumerate(positions):
-        if position in cdr_positions:
-            gap_open[:, column] = 0.0
     return gap_extend, gap_open
 
 

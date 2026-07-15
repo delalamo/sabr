@@ -106,8 +106,8 @@ the CLI with mmCIF output.
 
 - The trained encoder weights and Haiku operations are unchanged.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- Gap extension is `-0.175027` and gap opening is `-2.525591`.
-- Gap opening is zero only in IMGT CDR1 27–38, CDR2 56–65, and CDR3 105–117.
+- Gap extension is `-0.175027` and gap opening is `-2.525591` at every IMGT
+  position.
 - CDR gap distribution is always applied.
 - No deterministic light-chain DE-loop or C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses

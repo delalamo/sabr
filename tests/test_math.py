@@ -81,19 +81,13 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
     np.testing.assert_array_equal(positions, baseline["positions"])
 
 
-def test_gap_penalties_are_fixed_and_only_cdr_openings_are_free():
+def test_gap_penalties_are_fixed_and_uniform():
     positions = [0, 10, 27, 38, 39, 56, 65, 66, 105, 117, 118, 129]
     gap_extend, gap_open = create_gap_penalties(7, positions)
     assert gap_extend.dtype == np.float32
     assert gap_open.dtype == np.float32
     assert np.all(gap_extend == constants.SW_GAP_EXTEND)
-    for column, position in enumerate(positions):
-        expected = (
-            0.0
-            if position in {27, 38, 56, 65, 105, 117}
-            else constants.SW_GAP_OPEN
-        )
-        assert np.all(gap_open[:, column] == expected)
+    assert np.all(gap_open == constants.SW_GAP_OPEN)
 
 
 def test_every_noise_asset_has_all_chain_references():
