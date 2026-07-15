@@ -10,7 +10,6 @@ from sabr.alignment import (
     _align_reference,
     _validate_alignment,
     align,
-    create_gap_penalties,
     load_references,
 )
 from sabr.model import encode, load_parameters
@@ -65,9 +64,7 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
     )
 
     reference, positions = load_references(0.0)["H"]
-    reduced, similarity, score = _align_reference(
-        embeddings, reference, positions
-    )
+    reduced, similarity, score = _align_reference(embeddings, reference)
     np.testing.assert_allclose(
         reduced, baseline["reduced_alignment"], rtol=1e-5, atol=1e-6
     )
@@ -79,15 +76,6 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
         np.round(reduced), np.round(baseline["reduced_alignment"])
     )
     np.testing.assert_array_equal(positions, baseline["positions"])
-
-
-def test_gap_penalties_are_fixed_and_uniform():
-    positions = [0, 10, 27, 38, 39, 56, 65, 66, 105, 117, 118, 129]
-    gap_extend, gap_open = create_gap_penalties(7, positions)
-    assert gap_extend.dtype == np.float32
-    assert gap_open.dtype == np.float32
-    assert np.all(gap_extend == constants.SW_GAP_EXTEND)
-    assert np.all(gap_open == constants.SW_GAP_OPEN)
 
 
 def test_every_noise_asset_has_all_chain_references():
@@ -122,7 +110,7 @@ def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference, positions: (
+        lambda query, reference: (
             np.ones((len(query), 1)),
             np.zeros((len(query), 3)),
             1.0,
@@ -144,7 +132,7 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     }
     seen = []
 
-    def fake_align(query, reference, positions):
+    def fake_align(query, reference):
         seen.append(int(reference[0, 0]))
         return np.ones((len(query), 1)), np.zeros((len(query), 3)), 1.0
 
@@ -219,7 +207,7 @@ def test_non_finite_reference_score_is_rejected(monkeypatch):
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference, positions: (
+        lambda query, reference: (
             np.ones((len(query), 1)),
             np.zeros((len(query), 1)),
             float("nan"),
@@ -236,7 +224,7 @@ def test_non_finite_similarity_matrix_is_rejected(monkeypatch):
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference, positions: (
+        lambda query, reference: (
             np.ones((len(query), 1)),
             np.full((len(query), 1), np.inf),
             1.0,

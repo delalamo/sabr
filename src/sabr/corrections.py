@@ -149,7 +149,7 @@ def apply_corrections(
 ) -> np.ndarray:
     """Apply deterministic CDR corrections."""
     for loop_name, (cdr_start, cdr_end) in constants.IMGT_LOOPS.items():
-        aln = correct_cdr_loop(
+        correct_cdr_loop(
             aln, loop_name, cdr_start, cdr_end, gap_indices=gap_indices
         )
 
