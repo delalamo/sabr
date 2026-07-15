@@ -1,4 +1,4 @@
-"""Deterministic CDR, light-chain DE-loop, and C-terminal corrections."""
+"""Deterministic CDR corrections."""
 
 import logging
 import warnings
@@ -58,91 +58,6 @@ def _skip_for_structural_gap(
         warnings.warn(message, UserWarning, stacklevel=3)
         return True
     return False
-
-
-def _move_or_clear_position(
-    aln: np.ndarray,
-    source_col: int,
-    target_col: int,
-    source_pos: str,
-    target_pos: str,
-) -> None:
-    """Move a residue to an empty target column, then clear its source."""
-    target_occupied = aln[:, target_col].sum() == 1
-    if not target_occupied:
-        LOGGER.info(
-            f"Moving residue from position {source_pos} to position "
-            f"{target_pos} (chain lacks position {source_pos})"
-        )
-        aln[:, target_col] = aln[:, source_col]
-    else:
-        LOGGER.info(
-            f"Clearing position {source_pos} (chain lacks position "
-            f"{source_pos}, but position {target_pos} already occupied)"
-        )
-    aln[:, source_col] = 0
-
-
-def correct_light_chain_de_loop(
-    aln: np.ndarray,
-    gap_indices: frozenset[int] | None = None,
-) -> np.ndarray:
-    """Move light-chain residues aligned at 81/82 to IMGT 83/84."""
-    pos81_col = constants.FR3_POS81_COL
-    pos82_col = constants.FR3_POS82_COL
-    pos83_col = constants.FR3_POS83_COL
-    pos84_col = constants.FR3_POS84_COL
-
-    if gap_indices:
-        de_start_col = 78  # 0-indexed for position 79
-        de_end_col = 83  # 0-indexed for position 84
-        de_start_row = _aligned_row_near(aln, de_start_col)
-        de_end_row = _aligned_row_near(aln, de_end_col)
-        if (
-            de_start_row is not None
-            and de_end_row is not None
-            and _skip_for_structural_gap(
-                gap_indices, de_start_row, de_end_row, "FR3/DE loop"
-            )
-        ):
-            return aln
-
-    if aln[:, pos81_col].sum() == 1:
-        _move_or_clear_position(aln, pos81_col, pos83_col, "81", "83")
-
-    if aln[:, pos82_col].sum() == 1:
-        _move_or_clear_position(aln, pos82_col, pos84_col, "82", "84")
-
-    return aln
-
-
-def correct_c_terminus(aln: np.ndarray) -> np.ndarray:
-    """Assign trailing residues after IMGT 125, stopping at IMGT 128."""
-    n_rows, n_cols = aln.shape
-    assigned_rows = np.flatnonzero(aln.sum(axis=1))
-    if not len(assigned_rows):
-        return aln
-    last_assigned_row = assigned_rows[-1]
-    last_assigned_col = np.flatnonzero(aln.sum(axis=0))[-1]
-    n_unassigned_trailing = n_rows - last_assigned_row - 1
-    if n_unassigned_trailing <= 0:
-        return aln
-    if last_assigned_col < constants.C_TERMINUS_ANCHOR_POSITION:
-        return aln
-
-    LOGGER.info(
-        f"Correcting C-terminus: {n_unassigned_trailing} unassigned "
-        f"residues after row {last_assigned_row}, "
-        f"last assigned col was {last_assigned_col}"
-    )
-
-    rows = range(last_assigned_row + 1, n_rows)
-    columns = range(last_assigned_col + 1, n_cols)
-    for row, column in zip(rows, columns):
-        aln[row, :] = 0
-        aln[row, column] = 1
-
-    return aln
 
 
 def correct_cdr_loop(
@@ -230,18 +145,12 @@ def correct_cdr_loop(
 
 def apply_corrections(
     aln: np.ndarray,
-    chain_type: str,
     gap_indices: frozenset[int] | None = None,
 ) -> np.ndarray:
-    """Apply CDR, light-chain DE-loop, then C-terminal corrections."""
+    """Apply deterministic CDR corrections."""
     for loop_name, (cdr_start, cdr_end) in constants.IMGT_LOOPS.items():
         aln = correct_cdr_loop(
             aln, loop_name, cdr_start, cdr_end, gap_indices=gap_indices
         )
-
-    if chain_type in ("K", "L"):
-        aln = correct_light_chain_de_loop(aln, gap_indices=gap_indices)
-
-    aln = correct_c_terminus(aln)
 
     return aln

@@ -136,7 +136,7 @@ def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
     )
     monkeypatch.setattr(
         "sabr.alignment.apply_corrections",
-        lambda alignment, chain_type, gap_indices: alignment,
+        lambda alignment, gap_indices: alignment,
     )
     _, selected, _ = align(np.zeros((1, 64)), frozenset(), "auto", 0.0)
     assert selected == "H"
@@ -160,7 +160,7 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
     monkeypatch.setattr(
         "sabr.alignment.apply_corrections",
-        lambda alignment, selected, gap_indices: alignment,
+        lambda alignment, gap_indices: alignment,
     )
     _, selected, _ = align(np.zeros((1, 64)), frozenset(), chain_type, 0.0)
     assert selected == chain_type

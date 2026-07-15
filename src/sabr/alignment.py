@@ -282,8 +282,6 @@ def align(
     )
     full_alignment[:, np.asarray(positions) - 1] = reduced
     full_alignment = np.round(full_alignment).astype(int)
-    corrected = apply_corrections(
-        full_alignment, selected_type, gap_indices=gap_indices
-    )
+    corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
     _validate_alignment(corrected, selected_type)
     return corrected, selected_type, score
