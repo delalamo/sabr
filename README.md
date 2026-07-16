@@ -106,16 +106,16 @@ the CLI with mmCIF output.
 
 - The trained encoder weights and Haiku operations are unchanged.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- Gap extension is `-0.175027` and gap opening is `-2.525591`.
-- Gap opening is zero only in IMGT CDR1 27–38, CDR2 56–65, and CDR3 105–117.
-- CDR gap distribution, light-chain DE-loop placement, and C-terminal
-  correction are always applied.
+- Gap extension is `-0.175027` and gap opening is `-2.525591` at every IMGT
+  position.
+- CDR gap distribution is always applied.
+- No deterministic light-chain DE-loop or C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 
 A structural gap is detected when the C–N distance between consecutive
-residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop
-correction and emits a warning; other regions continue normally.
+residues exceeds 2.66 Å. A gap skips only the affected CDR correction and
+emits a warning; other regions continue normally.
 
 ## Development
 

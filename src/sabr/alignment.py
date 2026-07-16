@@ -65,25 +65,29 @@ def _apply_length_mask(x, lengths, NINF):
     return x + NINF * (1 - mask), mask
 
 
-def _rotate_gap_matrix(x):
-    """Rotate a gap penalty matrix for striped DP, using 0 as fill value."""
-    a, b = x.shape
-    ar = jnp.arange(a)[::-1, None]
-    br = jnp.arange(b)[None, :]
-    i, j = (br - ar) + (a - 1), (ar + br) // 2
-    n, m = (a + b - 1), (a + b) // 2
-    return jnp.full([n, m], 0.0).at[i, j].set(x)
-
-
 def _affine_score(
     similarities,
     lengths,
     temperature,
-    gap_extend,
-    gap_open,
     NINF=-1e30,
 ):
     """Return the smooth affine Smith-Waterman score for one matrix."""
+    right_penalties = jnp.asarray(
+        [
+            constants.SW_GAP_OPEN,
+            constants.SW_GAP_EXTEND,
+            constants.SW_GAP_OPEN,
+        ],
+        dtype=similarities.dtype,
+    )
+    down_penalties = jnp.asarray(
+        [
+            constants.SW_GAP_OPEN,
+            constants.SW_GAP_OPEN,
+            constants.SW_GAP_EXTEND,
+        ],
+        dtype=similarities.dtype,
+    )
 
     def step(previous, stripe):
         h2, h1 = previous
@@ -98,10 +102,8 @@ def _affine_score(
             h1,
             _pad(h1[1:], ([0, 1], [0, 0]), NINF),
         )
-        extension = stripe["gap"]
-        opening = stripe["open"]
-        right += jnp.stack([opening, extension, opening], axis=-1)
-        down += jnp.stack([opening, opening, extension], axis=-1)
+        right += right_penalties
+        down += down_penalties
         right = right[:, :2]
 
         h0 = jnp.stack(
@@ -116,8 +118,6 @@ def _affine_score(
 
     similarities, mask = _apply_length_mask(similarities, lengths, NINF)
     stripes, previous, indices = _rotate_for_dp(similarities[:-1, :-1], NINF)
-    stripes["gap"] = _rotate_gap_matrix(gap_extend[:-1, :-1])
-    stripes["open"] = _rotate_gap_matrix(gap_open[:-1, :-1])
     scores = jax.lax.scan(step, previous, stripes, unroll=2)[-1][indices]
     return _soft_maximum(
         scores + similarities[1:, 1:, None],
@@ -128,22 +128,8 @@ def _affine_score(
 
 
 _AFFINE_ALIGNMENT = jax.jit(
-    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, 0, 0))
+    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None))
 )
-
-
-def create_gap_penalties(query_length: int, positions: list) -> tuple:
-    """Create the fixed position-dependent affine gap penalties."""
-    shape = (query_length, len(positions))
-    gap_extend = np.full(shape, constants.SW_GAP_EXTEND, dtype=np.float32)
-    gap_open = np.full(shape, constants.SW_GAP_OPEN, dtype=np.float32)
-    cdr_positions = set()
-    for start, end in constants.IMGT_LOOPS.values():
-        cdr_positions.update(range(start, end + 1))
-    for column, position in enumerate(positions):
-        if position in cdr_positions:
-            gap_open[:, column] = 0.0
-    return gap_extend, gap_open
 
 
 @functools.cache
@@ -222,13 +208,9 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
         )
 
 
-def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
+def _align_reference(query: np.ndarray, reference: np.ndarray):
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
-    augmented_positions = [0, *positions, 129]
-    gap_extend, gap_open = create_gap_penalties(
-        query.shape[0], augmented_positions
-    )
     query_batch = jnp.asarray(query[None, :])
     reference_batch = jnp.asarray(augmented_reference[None, :])
     lengths = jnp.asarray([[query.shape[0], augmented_reference.shape[0]]])
@@ -237,8 +219,6 @@ def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
         similarity,
         lengths,
         constants.DEFAULT_TEMPERATURE,
-        jnp.asarray(gap_extend[None, :]),
-        jnp.asarray(gap_open[None, :]),
     )
     return (
         np.asarray(soft_alignment[0])[:, 1:-1],
@@ -261,9 +241,7 @@ def align(
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, similarity, score = _align_reference(
-            query, reference, positions
-        )
+        reduced, similarity, score = _align_reference(query, reference)
         if (
             not np.isfinite(score)
             or not np.isfinite(reduced).all()
@@ -282,8 +260,6 @@ def align(
     )
     full_alignment[:, np.asarray(positions) - 1] = reduced
     full_alignment = np.round(full_alignment).astype(int)
-    corrected = apply_corrections(
-        full_alignment, selected_type, gap_indices=gap_indices
-    )
+    corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
     _validate_alignment(corrected, selected_type)
     return corrected, selected_type, score

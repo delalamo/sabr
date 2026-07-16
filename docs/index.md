@@ -126,8 +126,8 @@ are required.
 ## Structural gaps and modified residues
 
 A C–N distance above 2.66 Å is treated as a structural gap. If a gap crosses a
-CDR or light-chain DE-loop region, SAbR warns and retains the learned alignment
-for that region while continuing corrections elsewhere.
+CDR, SAbR warns and retains the learned alignment for that region while
+continuing corrections elsewhere.
 
 Supported modified peptide residues are translated to their canonical parent
 only for sequence generation. Original residue names and atoms are preserved.
