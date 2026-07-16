@@ -32,6 +32,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [--residue-range START END]
+     [--scfv]
      [--overwrite] [-v]
 ```
 
@@ -39,6 +40,13 @@ Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
 and the entire selected chain. Existing outputs are never replaced unless
 `--overwrite` is given. Normal output contains only warnings and errors; `-v`
 reports reference scores and pipeline decisions.
+
+Use `--scfv` for a single chain containing two linked variable domains. In
+addition to the H, K, and L references, this mode tries the concatenated H:K,
+H:L, K:H, and L:H representations. The second domain is numbered with a 128
+offset so both domains have unique residue IDs in one structure chain; linker
+residues use insertion codes after the first domain. Because each composite
+already specifies both domain types, scFv mode requires automatic chain type.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
@@ -72,6 +80,7 @@ numbered = renumber_structure(
     chain_type="auto",
     noise_level=0.0,
     residue_range=None,
+    scfv=False,
 )
 ```
 
@@ -112,6 +121,7 @@ the CLI with mmCIF output.
   correction are always applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
+- scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
 
 A structural gap is detected when the C–N distance between consecutive
 residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop

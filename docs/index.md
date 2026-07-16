@@ -46,12 +46,20 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [--residue-range START END]
+     [--scfv]
      [--overwrite] [-v]
 ```
 
 The defaults are IMGT, automatic chain selection, and noise level `0.0`.
 Normal output contains only warnings and errors. Use `--verbose` to show the
 JAX backend, chain-selection scores, and a traceback on failure.
+
+For a single chain containing two linked variable domains, pass `--scfv`.
+This adds H:K, H:L, K:H, and L:H concatenated references to the normal H, K,
+and L candidates. SAbR offsets the second domain's assigned numbers by 128 to
+keep residue IDs unique and numbers the linker as insertions after domain one.
+scFv mode requires the default automatic chain type because each composite
+reference already specifies both domain types.
 
 ## Python API
 
@@ -100,6 +108,7 @@ renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    scfv: bool = False,
 )
 ```
 

@@ -16,6 +16,7 @@ def _validate_options(
     chain_type: str,
     noise_level: float,
     residue_range: tuple | None,
+    scfv: bool,
 ) -> tuple:
     if (
         not isinstance(scheme, str)
@@ -59,7 +60,11 @@ def _validate_options(
             )
         if residue_range[0] > residue_range[1]:
             raise ValueError("residue_range start must not exceed its end.")
-    return scheme.lower(), normalized_chain_type, normalized_noise
+    if not isinstance(scfv, bool):
+        raise ValueError("scfv must be a boolean.")
+    if scfv and normalized_chain_type != "auto":
+        raise ValueError("scfv requires chain_type='auto'.")
+    return scheme.lower(), normalized_chain_type, normalized_noise, scfv
 
 
 def renumber_structure(
@@ -69,10 +74,11 @@ def renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    scfv: bool = False,
 ):
     """Return a non-mutating, same-type renumbered structure."""
-    scheme, chain_type, noise_level = _validate_options(
-        scheme, chain_type, noise_level, residue_range
+    scheme, chain_type, noise_level, scfv = _validate_options(
+        scheme, chain_type, noise_level, residue_range, scfv
     )
     data = extract_chain(structure, chain, residue_range)
     embeddings = encode(data.coords)
@@ -81,6 +87,7 @@ def renumber_structure(
         data.gap_indices,
         chain_type,
         noise_level,
+        scfv=scfv,
     )
     LOGGER.info(
         "Selected %s reference with alignment score %.4f.",

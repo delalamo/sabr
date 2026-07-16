@@ -4,6 +4,7 @@ import logging
 
 import numpy as np
 
+from sabr import constants
 from sabr._anarci import schemes
 
 LOGGER = logging.getLogger(__name__)
@@ -85,13 +86,13 @@ def _apply_scheme(states: list, sequence: str, scheme: str, chain_type: str):
     return functions[scheme](states, sequence)
 
 
-def number_alignment(
+def _number_domain_alignment(
     alignment: np.ndarray,
     sequence: str,
     scheme: str,
     chain_type: str,
 ) -> tuple:
-    """Return explicit query-row-to-number records for one alignment."""
+    """Return explicit query-row records for one 128-column domain."""
     states, imgt_start, first_row = alignment_to_states(alignment)
     padded_sequence = "-" * imgt_start + sequence[first_row:]
     numbered, start, end = _apply_scheme(
@@ -124,6 +125,70 @@ def number_alignment(
         records.append((query_row, number, insertion_code, amino_acid))
     LOGGER.info(
         "Numbered %d residues as %s using %s.",
+        len(records),
+        chain_type,
+        scheme,
+    )
+    return records
+
+
+def number_alignment(
+    alignment: np.ndarray,
+    sequence: str,
+    scheme: str,
+    chain_type: str,
+) -> tuple:
+    """Return explicit query-row-to-number records for one alignment."""
+    if ":" not in chain_type:
+        return _number_domain_alignment(alignment, sequence, scheme, chain_type)
+
+    chain_types = chain_type.split(":")
+    expected_columns = len(chain_types) * constants.IMGT_MAX_POSITION
+    if alignment.ndim != 2 or alignment.shape[1] != expected_columns:
+        raise ValueError(
+            f"scFv alignment must have {expected_columns} columns."
+        )
+
+    domains = []
+    for domain_index, domain_type in enumerate(chain_types):
+        start = domain_index * constants.IMGT_MAX_POSITION
+        end = start + constants.IMGT_MAX_POSITION
+        records = _number_domain_alignment(
+            alignment[:, start:end], sequence, scheme, domain_type
+        )
+        if domain_index:
+            records = [
+                (
+                    query_row,
+                    number + constants.IMGT_MAX_POSITION,
+                    insertion_code,
+                    amino_acid,
+                )
+                for query_row, number, insertion_code, amino_acid in records
+            ]
+        domains.append(records)
+
+    first_domain, second_domain = domains
+    linker_start = first_domain[-1][0] + 1
+    linker_end = second_domain[0][0]
+    used_ids = {
+        (number, insertion_code)
+        for _, number, insertion_code, _ in first_domain
+    }
+    linker_number = first_domain[-1][1]
+    available_codes = (
+        code
+        for code in schemes.alphabet
+        if code.strip() and (linker_number, code) not in used_ids
+    )
+    linker = [
+        (query_row, linker_number, next(available_codes), sequence[query_row])
+        for query_row in range(linker_start, linker_end)
+    ]
+
+    records = [*first_domain, *linker, *second_domain]
+    LOGGER.info(
+        "Numbered %d residues as scFv %s using %s.",
         len(records),
         chain_type,
         scheme,

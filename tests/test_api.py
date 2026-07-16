@@ -42,7 +42,7 @@ def _stub_pipeline(monkeypatch):
     monkeypatch.setattr(
         api,
         "align",
-        lambda embeddings, gaps, chain_type, noise: (
+        lambda embeddings, gaps, chain_type, noise, scfv: (
             np.zeros((len(embeddings), 128), dtype=int),
             "H" if chain_type == "auto" else chain_type,
             0.0,
@@ -206,6 +206,8 @@ def test_multiple_models_are_rejected():
         ({"noise_level": "invalid"}, "noise_level"),
         ({"noise_level": False}, "noise_level"),
         ({"residue_range": (False, 10)}, "residue_range"),
+        ({"scfv": "yes"}, "scfv"),
+        ({"scfv": True, "chain_type": "H"}, "auto"),
     ],
 )
 def test_invalid_public_options_fail_before_model_execution(kwargs, message):

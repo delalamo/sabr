@@ -109,6 +109,11 @@ def _write_structure(structure, path: Path) -> None:
     ),
 )
 @click.option("--residue-range", nargs=2, type=int, metavar="START END")
+@click.option(
+    "--scfv",
+    is_flag=True,
+    help="Also try H:K, H:L, K:H, and L:H composite references.",
+)
 @click.option("--overwrite", is_flag=True)
 @click.option("-v", "--verbose", is_flag=True)
 def main(
@@ -119,6 +124,7 @@ def main(
     chain_type: str,
     noise_level: str,
     residue_range: tuple | None,
+    scfv: bool,
     overwrite: bool,
     verbose: bool,
 ) -> None:
@@ -153,6 +159,7 @@ def main(
             chain_type=chain_type,
             noise_level=float(noise_level),
             residue_range=residue_range,
+            scfv=scfv,
         )
         _write_structure(result, temporary)
         os.replace(temporary, output_path)

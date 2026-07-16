@@ -38,6 +38,7 @@ SW_GAP_OPEN = -2.525591
 # SoftAlign params
 DEFAULT_TEMPERATURE = 1e-4
 CHAIN_TYPES = ("H", "K", "L")
+SCFV_CHAIN_TYPES = ("H:K", "H:L", "K:H", "L:H")
 NOISE_LEVELS = (0.0, 0.2, 0.5, 1.0, 2.0)
 NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
 
