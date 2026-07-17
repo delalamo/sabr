@@ -122,6 +122,9 @@ the CLI with mmCIF output.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
+- Composite candidates receive normal affine gap-open and gap-extension costs
+  for unaligned query and reference termini when their selection scores are
+  compared; the underlying alignments and raw alignment scores are unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
 residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop

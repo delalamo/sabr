@@ -316,6 +316,31 @@ def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
     )
 
 
+def _affine_gap_penalty(length: int) -> float:
+    """Return the normal affine score for one gap of the given length."""
+    if length <= 0:
+        return 0.0
+    return constants.SW_GAP_OPEN + (length - 1) * constants.SW_GAP_EXTEND
+
+
+def _terminal_gap_penalty(alignment: np.ndarray) -> float:
+    """Score unaligned query and reference termini as affine gaps."""
+    discrete = np.round(alignment).astype(int)
+    path = np.argwhere(discrete == 1)
+    if not len(path):
+        raise ValueError("Alignment contains no assigned residues.")
+
+    first_query, first_reference = path[0]
+    last_query, last_reference = path[-1]
+    terminal_lengths = (
+        int(first_query),
+        int(first_reference),
+        alignment.shape[0] - int(last_query) - 1,
+        alignment.shape[1] - int(last_reference) - 1,
+    )
+    return sum(_affine_gap_penalty(length) for length in terminal_lengths)
+
+
 def align(
     query: np.ndarray,
     gap_indices: frozenset,
@@ -340,11 +365,30 @@ def align(
             raise ValueError(
                 f"{candidate} reference produced a non-finite alignment."
             )
-        LOGGER.info("%s reference score: %.4f", candidate, score)
-        if best is None or score > best[0]:
-            best = (score, candidate, reduced, positions)
+        selection_score = score
+        if ":" in candidate:
+            terminal_penalty = _terminal_gap_penalty(reduced)
+            selection_score += terminal_penalty
+            LOGGER.info(
+                "%s reference score: %.4f; terminal gap penalty: %.4f; "
+                "selection score: %.4f",
+                candidate,
+                score,
+                terminal_penalty,
+                selection_score,
+            )
+        else:
+            LOGGER.info("%s reference score: %.4f", candidate, score)
+        if best is None or selection_score > best[0]:
+            best = (
+                selection_score,
+                score,
+                candidate,
+                reduced,
+                positions,
+            )
 
-    score, selected_type, reduced, positions = best
+    _, score, selected_type, reduced, positions = best
     domain_count = (max(positions) - 1) // constants.IMGT_MAX_POSITION + 1
     full_alignment = np.zeros(
         (query.shape[0], domain_count * constants.IMGT_MAX_POSITION),

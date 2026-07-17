@@ -7,7 +7,9 @@ import pytest
 
 from sabr import constants
 from sabr.alignment import (
+    _affine_gap_penalty,
     _align_reference,
+    _terminal_gap_penalty,
     _validate_alignment,
     _validate_scfv_alignment,
     align,
@@ -270,6 +272,51 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     assert score == 10.0
     assert alignment.shape == (2, 256)
     assert corrected_types == ["H", "K"]
+
+
+def test_terminal_gap_penalty_uses_normal_affine_gap_costs():
+    alignment = np.zeros((8, 10))
+    alignment[2, 3] = 1
+    alignment[5, 7] = 1
+    expected = 4 * constants.SW_GAP_OPEN + 5 * constants.SW_GAP_EXTEND
+    assert _affine_gap_penalty(0) == 0.0
+    assert _affine_gap_penalty(1) == constants.SW_GAP_OPEN
+    assert _terminal_gap_penalty(alignment) == pytest.approx(expected)
+
+
+def test_scfv_terminal_penalty_is_used_only_for_candidate_selection(
+    monkeypatch,
+):
+    references = {
+        "H": (np.zeros((1, 64)), [1]),
+        "H:K": (np.ones((4, 64)), [1, 2, 129, 130]),
+    }
+
+    def fake_align(query, reference, positions):
+        if len(reference) == 1:
+            return np.ones((1, 1)), np.zeros((1, 3)), 8.0
+        return (
+            np.asarray([[1.0, 0.0, 0.0, 0.0]]),
+            np.zeros((1, 6)),
+            10.0,
+        )
+
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise, scfv=False: references,
+    )
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, selected, gap_indices: alignment,
+    )
+
+    alignment, selected, score = align(
+        np.zeros((1, 64)), frozenset(), "auto", 0.0, scfv=True
+    )
+    assert selected == "H"
+    assert score == 8.0
+    assert alignment.shape == (1, constants.IMGT_MAX_POSITION)
 
 
 def test_huge_internal_run_is_valid_inside_one_cdr():

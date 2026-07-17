@@ -61,6 +61,11 @@ keep residue IDs unique and numbers the linker as insertions after domain one.
 scFv mode requires the default automatic chain type because each composite
 reference already specifies both domain types.
 
+When candidates are compared, SAbR applies the normal affine gap-open and
+gap-extension costs to unaligned query and reference termini of composite
+representations. This post-hoc selection penalty does not change the computed
+alignments or their raw scores.
+
 ## Python API
 
 `renumber_structure` accepts either a BioPython or Gemmi `Structure`. It
