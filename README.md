@@ -31,14 +31,19 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
+     [-m sabr|softalign]
      [--residue-range START END]
      [--overwrite] [-v]
 ```
 
 Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
-and the entire selected chain. Existing outputs are never replaced unless
-`--overwrite` is given. Normal output contains only warnings and errors; `-v`
-reports reference scores and pipeline decisions.
+`sabr` mode, and the entire selected chain. Existing outputs are never
+replaced unless `--overwrite` is given. Normal output contains only warnings
+and errors; `-v` reports reference scores and pipeline decisions.
+
+Use `--mode softalign` to select the original SoftAlign encoder weights,
+reference embeddings, and affine gap penalties together. SoftAlign references
+do not vary with `--noise-level`, so that option is ignored in this mode.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
@@ -71,6 +76,7 @@ numbered = renumber_structure(
     scheme="chothia",
     chain_type="auto",
     noise_level=0.0,
+    mode="softalign",
     residue_range=None,
 )
 ```
@@ -104,10 +110,15 @@ the CLI with mmCIF output.
 
 ## Scientific behavior
 
-- The trained encoder weights and Haiku operations are unchanged.
+- The default `sabr` mode preserves the trained SAbR encoder weights,
+  references, and gap penalties unchanged.
+- The optional `softalign` mode uses `softalign_encoder.npz`,
+  `softalign_embeddings.npz`, and the exact penalties in
+  `softalign_gap.npz` as one parameter set.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- Gap extension is `-0.175027` and gap opening is `-2.525591` at every IMGT
-  position.
+- In `sabr` mode, gap extension is `-0.175027` and gap opening is `-2.525591`.
+  In `softalign` mode, they are `0.1942468136548996` and
+  `-2.5441808700561523`, respectively, as stored in the repository asset.
 - CDR gap distribution is always applied.
 - No deterministic light-chain DE-loop or C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses

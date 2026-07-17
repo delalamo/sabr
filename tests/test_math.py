@@ -10,6 +10,7 @@ from sabr.alignment import (
     _align_reference,
     _validate_alignment,
     align,
+    load_gap_penalties,
     load_references,
 )
 from sabr.model import encode, load_parameters
@@ -45,6 +46,18 @@ def test_scientific_assets_are_unchanged():
             "b2f8e886e73655d25c68d23488ad17a"
             "2e441af9fe016da50d28b3e05928861e2"
         ),
+        "softalign_encoder.npz": (
+            "eb25b5b37b4aa62c0d70cfea78e7fd32"
+            "8e7fbfce2b05a783f19b701145edba32"
+        ),
+        "softalign_embeddings.npz": (
+            "640415ee69f144cb6d4a6ab0df2817bd0"
+            "541dc8b0252f40c14e312f2e9448533"
+        ),
+        "softalign_gap.npz": (
+            "ba3565786a7d9d3e69f6a41796f3b40"
+            "e361ec65ed33cb4b435019549f2b5abae"
+        ),
     }
     for filename, digest in expected.items():
         assert (
@@ -62,6 +75,9 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
     np.testing.assert_allclose(
         embeddings, baseline["embeddings"], rtol=1e-5, atol=1e-6
     )
+    softalign_embeddings = encode(data.coords, "softalign")
+    assert softalign_embeddings.shape == embeddings.shape
+    assert not np.allclose(softalign_embeddings, embeddings)
 
     reference, positions = load_references(0.0)["H"]
     reduced, similarity, score = _align_reference(embeddings, reference)
@@ -87,6 +103,41 @@ def test_every_noise_asset_has_all_chain_references():
             assert embeddings.shape[0] == len(positions)
 
 
+def test_softalign_mode_loads_its_complete_parameter_set():
+    references = load_references(2.0, "softalign")
+    assert tuple(references) == constants.CHAIN_TYPES
+    for embeddings, positions in references.values():
+        assert embeddings.shape == (len(positions), constants.EMBED_DIM)
+
+    parameters = load_parameters("softalign")
+    assert load_parameters("softalign") is parameters
+    assert set(parameters) == set(load_parameters("sabr"))
+
+    gap_extend, gap_open = load_gap_penalties("softalign")
+    assert gap_extend == pytest.approx(0.1942468136548996)
+    assert gap_open == pytest.approx(-2.5441808700561523)
+
+
+def test_softalign_gap_penalties_reach_affine_alignment(monkeypatch):
+    captured = {}
+
+    def fake_affine(similarity, lengths, temperature, gap_extend, gap_open):
+        captured["gap_extend"] = gap_extend
+        captured["gap_open"] = gap_open
+        return np.asarray([0.0]), np.zeros(np.asarray(similarity).shape)
+
+    monkeypatch.setattr("sabr.alignment._AFFINE_ALIGNMENT", fake_affine)
+    _align_reference(
+        np.zeros((1, constants.EMBED_DIM)),
+        np.zeros((1, constants.EMBED_DIM)),
+        "softalign",
+    )
+    assert captured == {
+        "gap_extend": pytest.approx(0.1942468136548996),
+        "gap_open": pytest.approx(-2.5441808700561523),
+    }
+
+
 def test_model_assets_are_cached_and_immutable():
     load_parameters.cache_clear()
     first_parameters = load_parameters()
@@ -106,11 +157,11 @@ def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
         for chain_type in constants.CHAIN_TYPES
     }
     monkeypatch.setattr(
-        "sabr.alignment.load_references", lambda noise: references
+        "sabr.alignment.load_references", lambda noise, mode: references
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference: (
+        lambda query, reference, mode: (
             np.ones((len(query), 1)),
             np.zeros((len(query), 3)),
             1.0,
@@ -132,12 +183,12 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     }
     seen = []
 
-    def fake_align(query, reference):
+    def fake_align(query, reference, mode):
         seen.append(int(reference[0, 0]))
         return np.ones((len(query), 1)), np.zeros((len(query), 3)), 1.0
 
     monkeypatch.setattr(
-        "sabr.alignment.load_references", lambda noise: references
+        "sabr.alignment.load_references", lambda noise, mode: references
     )
     monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
     monkeypatch.setattr(
@@ -203,11 +254,11 @@ def test_leading_and_trailing_alignment_boundaries():
 def test_non_finite_reference_score_is_rejected(monkeypatch):
     monkeypatch.setattr(
         "sabr.alignment.load_references",
-        lambda noise: {"H": (np.zeros((1, 64)), (1,))},
+        lambda noise, mode: {"H": (np.zeros((1, 64)), (1,))},
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference: (
+        lambda query, reference, mode: (
             np.ones((len(query), 1)),
             np.zeros((len(query), 1)),
             float("nan"),
@@ -220,11 +271,11 @@ def test_non_finite_reference_score_is_rejected(monkeypatch):
 def test_non_finite_similarity_matrix_is_rejected(monkeypatch):
     monkeypatch.setattr(
         "sabr.alignment.load_references",
-        lambda noise: {"H": (np.zeros((1, 64)), (1,))},
+        lambda noise, mode: {"H": (np.zeros((1, 64)), (1,))},
     )
     monkeypatch.setattr(
         "sabr.alignment._align_reference",
-        lambda query, reference: (
+        lambda query, reference, mode: (
             np.ones((len(query), 1)),
             np.full((len(query), 1), np.inf),
             1.0,

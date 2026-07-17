@@ -108,6 +108,14 @@ def _write_structure(structure, path: Path) -> None:
         tuple(f"{level:.1f}" for level in constants.NOISE_LEVELS)
     ),
 )
+@click.option(
+    "-m",
+    "--mode",
+    default="sabr",
+    show_default=True,
+    type=click.Choice(constants.MODES, case_sensitive=False),
+    help="Select a complete encoder, references, and gap-penalty set.",
+)
 @click.option("--residue-range", nargs=2, type=int, metavar="START END")
 @click.option("--overwrite", is_flag=True)
 @click.option("-v", "--verbose", is_flag=True)
@@ -118,6 +126,7 @@ def main(
     scheme: str,
     chain_type: str,
     noise_level: str,
+    mode: str,
     residue_range: tuple | None,
     overwrite: bool,
     verbose: bool,
@@ -152,6 +161,7 @@ def main(
             scheme=scheme,
             chain_type=chain_type,
             noise_level=float(noise_level),
+            mode=mode,
             residue_range=residue_range,
         )
         _write_structure(result, temporary)

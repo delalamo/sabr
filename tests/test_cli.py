@@ -43,6 +43,8 @@ def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
             "L",
             "--noise-level",
             "0.5",
+            "--mode",
+            "softalign",
             "--residue-range",
             "2",
             "127",
@@ -57,6 +59,7 @@ def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
         "scheme": "kabat",
         "chain_type": "L",
         "noise_level": 0.5,
+        "mode": "softalign",
         "residue_range": (2, 127),
     }
     assert "pipeline details" in result.output
@@ -81,6 +84,7 @@ def test_cli_defaults_are_deterministic_and_quiet(monkeypatch, tmp_path):
     assert captured["scheme"] == "imgt"
     assert captured["chain_type"] == "auto"
     assert captured["noise_level"] == 0.0
+    assert captured["mode"] == "sabr"
     assert captured["residue_range"] is None
     assert "pipeline details" not in result.output
 
@@ -162,6 +166,28 @@ def test_real_cli_round_trip(monkeypatch, tmp_path):
             str(output),
             "-t",
             "H",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    parsed = PDBParser(QUIET=True).get_structure("output", output)
+    assert list(parsed[0]["F"])[-1].id[1] == 128
+
+
+def test_real_softalign_cli_round_trip(tmp_path):
+    output = tmp_path / "softalign-numbered.pdb"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(output),
+            "-t",
+            "H",
+            "--mode",
+            "softalign",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -376,4 +402,5 @@ def test_help_and_version_are_available():
     version_result = runner.invoke(cli.main, ["--version"])
     assert help_result.exit_code == 0
     assert "--noise-level" in help_result.output
+    assert "--mode" in help_result.output
     assert version_result.exit_code == 0
