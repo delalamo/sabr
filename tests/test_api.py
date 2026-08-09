@@ -39,7 +39,7 @@ def _stub_pipeline(monkeypatch, captured_modes=None):
             captured_modes["encoder"] = mode
         return np.zeros((len(coords), 64))
 
-    def fake_align(embeddings, gaps, chain_type, noise, mode):
+    def fake_align(embeddings, gaps, chain_type, noise, mode, scfv):
         if captured_modes is not None:
             captured_modes["alignment"] = mode
         return (
@@ -231,6 +231,8 @@ def test_multiple_models_are_rejected():
         ({"mode": "other"}, "mode"),
         ({"mode": None}, "mode"),
         ({"residue_range": (False, 10)}, "residue_range"),
+        ({"scfv": "yes"}, "scfv"),
+        ({"scfv": True, "chain_type": "H"}, "auto"),
     ],
 )
 def test_invalid_public_options_fail_before_model_execution(kwargs, message):

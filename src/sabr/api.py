@@ -17,6 +17,7 @@ def _validate_options(
     noise_level: float,
     residue_range: tuple | None,
     mode: str,
+    scfv: bool,
 ) -> tuple:
     if (
         not isinstance(scheme, str)
@@ -62,11 +63,16 @@ def _validate_options(
             raise ValueError("residue_range start must not exceed its end.")
     if not isinstance(mode, str) or mode.lower() not in constants.MODES:
         raise ValueError(f"mode must be one of {', '.join(constants.MODES)}.")
+    if not isinstance(scfv, bool):
+        raise ValueError("scfv must be a boolean.")
+    if scfv and normalized_chain_type != "auto":
+        raise ValueError("scfv requires chain_type='auto'.")
     return (
         scheme.lower(),
         normalized_chain_type,
         normalized_noise,
         mode.lower(),
+        scfv,
     )
 
 
@@ -78,14 +84,16 @@ def renumber_structure(
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
     mode: str = "sabr",
+    scfv: bool = False,
 ):
     """Return a non-mutating, same-type renumbered structure.
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
-    penalties as one scientifically consistent parameter set.
+    penalties as one scientifically consistent parameter set. ``scfv=True``
+    adds the four supported two-domain composite references.
     """
-    scheme, chain_type, noise_level, mode = _validate_options(
-        scheme, chain_type, noise_level, residue_range, mode
+    scheme, chain_type, noise_level, mode, scfv = _validate_options(
+        scheme, chain_type, noise_level, residue_range, mode, scfv
     )
     data = extract_chain(structure, chain, residue_range)
     embeddings = encode(data.coords, mode)
@@ -94,7 +102,8 @@ def renumber_structure(
         data.gap_indices,
         chain_type,
         noise_level,
-        mode,
+        mode=mode,
+        scfv=scfv,
     )
     LOGGER.info(
         "Selected %s reference with alignment score %.4f.",

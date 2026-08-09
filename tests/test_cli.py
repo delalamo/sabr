@@ -61,6 +61,7 @@ def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
         "noise_level": 0.5,
         "mode": "softalign",
         "residue_range": (2, 127),
+        "scfv": False,
     }
     assert "pipeline details" in result.output
 
@@ -86,6 +87,7 @@ def test_cli_defaults_are_deterministic_and_quiet(monkeypatch, tmp_path):
     assert captured["noise_level"] == 0.0
     assert captured["mode"] == "sabr"
     assert captured["residue_range"] is None
+    assert captured["scfv"] is False
     assert "pipeline details" not in result.output
 
 
@@ -111,6 +113,26 @@ def test_cli_accepts_every_reference_noise_level(
     )
     assert result.exit_code == 0, result.output
     assert captured["noise_level"] == float(noise_level)
+
+
+def test_cli_forwards_scfv_mode(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr(cli, "renumber_structure", _passthrough(captured))
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(tmp_path / "scfv.pdb"),
+            "--scfv",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["chain_type"] == "auto"
+    assert captured["scfv"] is True
 
 
 def test_cli_overwrite_protection(monkeypatch, tmp_path):
@@ -402,5 +424,6 @@ def test_help_and_version_are_available():
     version_result = runner.invoke(cli.main, ["--version"])
     assert help_result.exit_code == 0
     assert "--noise-level" in help_result.output
+    assert "--scfv" in help_result.output
     assert "--mode" in help_result.output
     assert version_result.exit_code == 0

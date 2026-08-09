@@ -135,8 +135,12 @@ _AFFINE_ALIGNMENT = jax.jit(
 
 
 @functools.cache
-def load_references(noise_level: float, mode: str = "sabr") -> dict:
-    """Load the H, K, and L reference embeddings for one mode."""
+def load_references(
+    noise_level: float,
+    mode: str = "sabr",
+    scfv: bool = False,
+) -> dict:
+    """Load single-domain and optional scFv references for one mode."""
     if mode == "sabr":
         filename = f"embeddings_noise_{noise_level:.1f}.npz"
     elif mode == "softalign":
@@ -154,6 +158,26 @@ def load_references(noise_level: float, mode: str = "sabr") -> dict:
             embeddings,
             tuple(int(position) for position in data[chain_type]["idxs"]),
         )
+
+    if scfv:
+        for representation in constants.SCFV_CHAIN_TYPES:
+            first_type, second_type = representation.split(":")
+            first_embeddings, first_positions = references[first_type]
+            second_embeddings, second_positions = references[second_type]
+            embeddings = np.concatenate(
+                (first_embeddings, second_embeddings), axis=0
+            )
+            embeddings.flags.writeable = False
+            references[representation] = (
+                embeddings,
+                (
+                    *first_positions,
+                    *(
+                        position + constants.IMGT_MAX_POSITION
+                        for position in second_positions
+                    ),
+                ),
+            )
     return references
 
 
@@ -170,8 +194,8 @@ def load_gap_penalties(mode: str = "sabr") -> tuple[float, float]:
         return float(data["gap_extend"]), float(data["gap_open"])
 
 
-def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
-    """Reject ambiguous paths before they are converted to numbering states."""
+def _alignment_path(alignment: np.ndarray) -> np.ndarray:
+    """Validate common matrix invariants and return its assigned path."""
     if alignment.ndim != 2 or not np.isfinite(alignment).all():
         raise ValueError("Alignment must be a finite two-dimensional matrix.")
     if not np.isin(alignment, (0, 1)).all():
@@ -191,6 +215,14 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
             "Alignment assignments are not strictly monotonic; use "
             "residue_range to select one antibody domain."
         )
+    return path
+
+
+def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
+    """Reject ambiguous paths before they are converted to numbering states."""
+    path = _alignment_path(alignment)
+    rows = path[:, 0]
+    columns = path[:, 1]
 
     first_row = int(rows[0])
     first_position = int(columns[0]) + 1
@@ -228,6 +260,37 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
         )
 
 
+def _validate_scfv_alignment(
+    alignment: np.ndarray, representation: str
+) -> None:
+    """Validate two ordered IMGT-domain blocks with an optional linker."""
+    expected_columns = 2 * constants.IMGT_MAX_POSITION
+    if alignment.ndim != 2 or alignment.shape[1] != expected_columns:
+        raise ValueError(
+            f"scFv alignment must have {expected_columns} columns."
+        )
+    _alignment_path(alignment)
+
+    domain_rows = []
+    for domain_index, chain_type in enumerate(representation.split(":")):
+        start = domain_index * constants.IMGT_MAX_POSITION
+        end = start + constants.IMGT_MAX_POSITION
+        domain = alignment[:, start:end]
+        assigned_rows = np.flatnonzero(domain.sum(axis=1))
+        if not len(assigned_rows):
+            raise ValueError(
+                f"scFv {chain_type} domain contains no assigned residues."
+            )
+        domain_rows.append((int(assigned_rows[0]), int(assigned_rows[-1])))
+        if domain_index == 0:
+            _validate_alignment(domain[: assigned_rows[-1] + 1], chain_type)
+        else:
+            _validate_alignment(domain[assigned_rows[0] :], chain_type)
+
+    if domain_rows[0][1] >= domain_rows[1][0]:
+        raise ValueError("scFv domain assignments overlap or are out of order.")
+
+
 def _align_reference(
     query: np.ndarray,
     reference: np.ndarray,
@@ -254,18 +317,53 @@ def _align_reference(
     )
 
 
+def _affine_gap_penalty(
+    length: int,
+    gap_extend: float = constants.SW_GAP_EXTEND,
+    gap_open: float = constants.SW_GAP_OPEN,
+) -> float:
+    """Return the normal affine score for one gap of the given length."""
+    if length <= 0:
+        return 0.0
+    return gap_open + (length - 1) * gap_extend
+
+
+def _terminal_gap_penalty(
+    alignment: np.ndarray,
+    mode: str = "sabr",
+) -> float:
+    """Score unaligned query and reference termini as affine gaps."""
+    discrete = np.round(alignment).astype(int)
+    path = np.argwhere(discrete == 1)
+    if not len(path):
+        raise ValueError("Alignment contains no assigned residues.")
+
+    first_query, first_reference = path[0]
+    last_query, last_reference = path[-1]
+    terminal_lengths = (
+        int(first_query),
+        int(first_reference),
+        alignment.shape[0] - int(last_query) - 1,
+        alignment.shape[1] - int(last_reference) - 1,
+    )
+    gap_extend, gap_open = load_gap_penalties(mode)
+    return sum(
+        _affine_gap_penalty(length, gap_extend, gap_open)
+        for length in terminal_lengths
+    )
+
+
 def align(
     query: np.ndarray,
     gap_indices: frozenset,
     chain_type: str,
     noise_level: float,
     mode: str = "sabr",
+    scfv: bool = False,
 ) -> tuple:
     """Align query embeddings and return corrected IMGT alignment metadata."""
-    references = load_references(noise_level, mode)
-    candidates = (
-        constants.CHAIN_TYPES if chain_type == "auto" else (chain_type,)
-    )
+    references = load_references(noise_level, mode, scfv=scfv)
+    candidates = tuple(references) if chain_type == "auto" else (chain_type,)
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
@@ -278,16 +376,48 @@ def align(
             raise ValueError(
                 f"{candidate} reference produced a non-finite alignment."
             )
-        LOGGER.info("%s reference score: %.4f", candidate, score)
-        if best is None or score > best[0]:
-            best = (score, candidate, reduced, positions)
+        selection_score = score
+        if ":" in candidate:
+            terminal_penalty = _terminal_gap_penalty(reduced, mode)
+            selection_score += terminal_penalty
+            LOGGER.info(
+                "%s reference score: %.4f; terminal gap penalty: %.4f; "
+                "selection score: %.4f",
+                candidate,
+                score,
+                terminal_penalty,
+                selection_score,
+            )
+        else:
+            LOGGER.info("%s reference score: %.4f", candidate, score)
+        if best is None or selection_score > best[0]:
+            best = (
+                selection_score,
+                score,
+                candidate,
+                reduced,
+                positions,
+            )
 
-    score, selected_type, reduced, positions = best
+    _, score, selected_type, reduced, positions = best
+    domain_count = (max(positions) - 1) // constants.IMGT_MAX_POSITION + 1
     full_alignment = np.zeros(
-        (query.shape[0], constants.IMGT_MAX_POSITION), dtype=reduced.dtype
+        (query.shape[0], domain_count * constants.IMGT_MAX_POSITION),
+        dtype=reduced.dtype,
     )
     full_alignment[:, np.asarray(positions) - 1] = reduced
     full_alignment = np.round(full_alignment).astype(int)
-    corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
-    _validate_alignment(corrected, selected_type)
+    if ":" in selected_type:
+        corrected = full_alignment.copy()
+        for domain_index, _ in enumerate(selected_type.split(":")):
+            start = domain_index * constants.IMGT_MAX_POSITION
+            end = start + constants.IMGT_MAX_POSITION
+            corrected[:, start:end] = apply_corrections(
+                corrected[:, start:end],
+                gap_indices=gap_indices,
+            )
+        _validate_scfv_alignment(corrected, selected_type)
+    else:
+        corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
+        _validate_alignment(corrected, selected_type)
     return corrected, selected_type, score

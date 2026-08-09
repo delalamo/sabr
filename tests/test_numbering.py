@@ -101,6 +101,28 @@ def test_number_alignment_retains_original_query_rows(monkeypatch):
     ]
 
 
+def test_scfv_numbering_offsets_second_domain_and_numbers_linker(monkeypatch):
+    alignment = np.zeros((5, 256), dtype=int)
+    alignment[0, 0] = 1
+    alignment[1, 1] = 1
+    alignment[3, 128] = 1
+    alignment[4, 129] = 1
+
+    def fake_scheme(states, sequence, scheme, chain_type):
+        if chain_type == "H":
+            return [((1, ""), "A"), ((2, ""), "C")], 0, 1
+        return [((1, ""), "E"), ((2, ""), "F")], 0, 1
+
+    monkeypatch.setattr(numbering, "_apply_scheme", fake_scheme)
+    assert number_alignment(alignment, "ACDEF", "imgt", "H:K") == [
+        (0, 1, "", "A"),
+        (1, 2, "", "C"),
+        (2, 2, "A", "D"),
+        (3, 129, "", "E"),
+        (4, 130, "", "F"),
+    ]
+
+
 @pytest.mark.parametrize(
     ("records", "start", "end", "message"),
     [

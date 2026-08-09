@@ -117,6 +117,11 @@ def _write_structure(structure, path: Path) -> None:
     help="Select a complete encoder, references, and gap-penalty set.",
 )
 @click.option("--residue-range", nargs=2, type=int, metavar="START END")
+@click.option(
+    "--scfv",
+    is_flag=True,
+    help="Also try H:K, H:L, K:H, and L:H composite references.",
+)
 @click.option("--overwrite", is_flag=True)
 @click.option("-v", "--verbose", is_flag=True)
 def main(
@@ -128,6 +133,7 @@ def main(
     noise_level: str,
     mode: str,
     residue_range: tuple | None,
+    scfv: bool,
     overwrite: bool,
     verbose: bool,
 ) -> None:
@@ -163,6 +169,7 @@ def main(
             noise_level=float(noise_level),
             mode=mode,
             residue_range=residue_range,
+            scfv=scfv,
         )
         _write_structure(result, temporary)
         os.replace(temporary, output_path)

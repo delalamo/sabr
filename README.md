@@ -33,6 +33,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [-m sabr|softalign]
      [--residue-range START END]
+     [--scfv]
      [--overwrite] [-v]
 ```
 
@@ -44,6 +45,15 @@ and errors; `-v` reports reference scores and pipeline decisions.
 Use `--mode softalign` to select the original SoftAlign encoder weights,
 reference embeddings, and affine gap penalties together. SoftAlign references
 do not vary with `--noise-level`, so that option is ignored in this mode.
+
+Use `--scfv` for a single chain containing two linked variable domains. In
+addition to the H, K, and L references, this mode tries the concatenated H:K,
+H:L, K:H, and L:H representations. The second domain is numbered with a 128
+offset so both domains have unique residue IDs in one structure chain; linker
+residues use insertion codes after the first domain. Because each composite
+already specifies both domain types, scFv mode requires automatic chain type.
+Composite references use the selected parameter mode, so `--scfv` can be
+combined with `--mode softalign`.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
@@ -78,6 +88,7 @@ numbered = renumber_structure(
     noise_level=0.0,
     mode="softalign",
     residue_range=None,
+    scfv=False,
 )
 ```
 
@@ -123,6 +134,10 @@ the CLI with mmCIF output.
 - No deterministic light-chain DE-loop or C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
+- scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
+- Composite candidates receive normal affine gap-open and gap-extension costs
+  for unaligned query and reference termini when their selection scores are
+  compared; the underlying alignments and raw alignment scores are unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
 residues exceeds 2.66 Å. A gap skips only the affected CDR correction and
