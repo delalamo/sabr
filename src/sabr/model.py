@@ -463,9 +463,17 @@ def _unflatten_parameters(flat_parameters: dict) -> dict:
 
 
 @functools.cache
-def load_parameters() -> dict:
-    """Load the immutable trained encoder parameters."""
-    path = files("sabr.assets") / "mpnn_encoder.npz"
+def load_parameters(mode: str = "sabr") -> dict:
+    """Load the immutable encoder parameters for one alignment mode."""
+    filenames = {
+        "sabr": "mpnn_encoder.npz",
+        "softalign": "softalign_encoder.npz",
+    }
+    try:
+        filename = filenames[mode]
+    except KeyError as error:
+        raise ValueError(f"mode must be one of {constants.MODES}.") from error
+    path = files("sabr.assets") / filename
     with path.open("rb") as handle:
         flat_parameters = dict(np.load(handle, allow_pickle=False))
     return _unflatten_parameters(flat_parameters)
@@ -490,15 +498,15 @@ def _encode(coords, mask, chain_ids, residue_indices):
 _TRANSFORMED_ENCODER = hk.transform(_encode)
 
 
-def encode(coords: np.ndarray) -> np.ndarray:
-    """Return the trained 64-dimensional embedding for each residue."""
+def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
+    """Return the selected model's 64-dimensional residue embeddings."""
     n_residues = coords.shape[0]
     batched_coords = coords[None, :]
     mask = np.ones((1, n_residues))
     chain_ids = np.ones((1, n_residues))
     residue_indices = np.arange(n_residues)[None, :]
     result = _TRANSFORMED_ENCODER.apply(
-        load_parameters(),
+        load_parameters(mode),
         jax.random.PRNGKey(0),
         batched_coords,
         mask,

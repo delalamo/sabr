@@ -16,6 +16,7 @@ def _validate_options(
     chain_type: str,
     noise_level: float,
     residue_range: tuple | None,
+    mode: str,
 ) -> tuple:
     if (
         not isinstance(scheme, str)
@@ -59,7 +60,14 @@ def _validate_options(
             )
         if residue_range[0] > residue_range[1]:
             raise ValueError("residue_range start must not exceed its end.")
-    return scheme.lower(), normalized_chain_type, normalized_noise
+    if not isinstance(mode, str) or mode.lower() not in constants.MODES:
+        raise ValueError(f"mode must be one of {', '.join(constants.MODES)}.")
+    return (
+        scheme.lower(),
+        normalized_chain_type,
+        normalized_noise,
+        mode.lower(),
+    )
 
 
 def renumber_structure(
@@ -69,18 +77,24 @@ def renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    mode: str = "sabr",
 ):
-    """Return a non-mutating, same-type renumbered structure."""
-    scheme, chain_type, noise_level = _validate_options(
-        scheme, chain_type, noise_level, residue_range
+    """Return a non-mutating, same-type renumbered structure.
+
+    ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
+    penalties as one scientifically consistent parameter set.
+    """
+    scheme, chain_type, noise_level, mode = _validate_options(
+        scheme, chain_type, noise_level, residue_range, mode
     )
     data = extract_chain(structure, chain, residue_range)
-    embeddings = encode(data.coords)
+    embeddings = encode(data.coords, mode)
     imgt_alignment, selected_type, score = align(
         embeddings,
         data.gap_indices,
         chain_type,
         noise_level,
+        mode,
     )
     LOGGER.info(
         "Selected %s reference with alignment score %.4f.",

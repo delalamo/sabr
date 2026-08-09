@@ -69,22 +69,24 @@ def _affine_score(
     similarities,
     lengths,
     temperature,
+    gap_extend,
+    gap_open,
     NINF=-1e30,
 ):
     """Return the smooth affine Smith-Waterman score for one matrix."""
     right_penalties = jnp.asarray(
         [
-            constants.SW_GAP_OPEN,
-            constants.SW_GAP_EXTEND,
-            constants.SW_GAP_OPEN,
+            gap_open,
+            gap_extend,
+            gap_open,
         ],
         dtype=similarities.dtype,
     )
     down_penalties = jnp.asarray(
         [
-            constants.SW_GAP_OPEN,
-            constants.SW_GAP_OPEN,
-            constants.SW_GAP_EXTEND,
+            gap_open,
+            gap_open,
+            gap_extend,
         ],
         dtype=similarities.dtype,
     )
@@ -128,14 +130,19 @@ def _affine_score(
 
 
 _AFFINE_ALIGNMENT = jax.jit(
-    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None))
+    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, None, None))
 )
 
 
 @functools.cache
-def load_references(noise_level: float) -> dict:
-    """Load the H, K, and L reference embeddings for one noise level."""
-    filename = f"embeddings_noise_{noise_level:.1f}.npz"
+def load_references(noise_level: float, mode: str = "sabr") -> dict:
+    """Load the H, K, and L reference embeddings for one mode."""
+    if mode == "sabr":
+        filename = f"embeddings_noise_{noise_level:.1f}.npz"
+    elif mode == "softalign":
+        filename = "softalign_embeddings.npz"
+    else:
+        raise ValueError(f"mode must be one of {constants.MODES}.")
     path = files("sabr.assets") / filename
     with path.open("rb") as handle:
         data = np.load(handle, allow_pickle=True)["arr_0"].item()
@@ -148,6 +155,19 @@ def load_references(noise_level: float) -> dict:
             tuple(int(position) for position in data[chain_type]["idxs"]),
         )
     return references
+
+
+@functools.cache
+def load_gap_penalties(mode: str = "sabr") -> tuple[float, float]:
+    """Return the gap extension and opening values for one mode."""
+    if mode == "sabr":
+        return constants.SW_GAP_EXTEND, constants.SW_GAP_OPEN
+    if mode != "softalign":
+        raise ValueError(f"mode must be one of {constants.MODES}.")
+    path = files("sabr.assets") / "softalign_gap.npz"
+    with path.open("rb") as handle:
+        data = np.load(handle, allow_pickle=False)
+        return float(data["gap_extend"]), float(data["gap_open"])
 
 
 def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
@@ -208,17 +228,24 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
         )
 
 
-def _align_reference(query: np.ndarray, reference: np.ndarray):
+def _align_reference(
+    query: np.ndarray,
+    reference: np.ndarray,
+    mode: str = "sabr",
+):
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
     query_batch = jnp.asarray(query[None, :])
     reference_batch = jnp.asarray(augmented_reference[None, :])
     lengths = jnp.asarray([[query.shape[0], augmented_reference.shape[0]]])
     similarity = jnp.einsum("nia,nja->nij", query_batch, reference_batch)
+    gap_extend, gap_open = load_gap_penalties(mode)
     scores, soft_alignment = _AFFINE_ALIGNMENT(
         similarity,
         lengths,
         constants.DEFAULT_TEMPERATURE,
+        gap_extend,
+        gap_open,
     )
     return (
         np.asarray(soft_alignment[0])[:, 1:-1],
@@ -232,16 +259,17 @@ def align(
     gap_indices: frozenset,
     chain_type: str,
     noise_level: float,
+    mode: str = "sabr",
 ) -> tuple:
     """Align query embeddings and return corrected IMGT alignment metadata."""
-    references = load_references(noise_level)
+    references = load_references(noise_level, mode)
     candidates = (
         constants.CHAIN_TYPES if chain_type == "auto" else (chain_type,)
     )
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, similarity, score = _align_reference(query, reference)
+        reduced, similarity, score = _align_reference(query, reference, mode)
         if (
             not np.isfinite(score)
             or not np.isfinite(reduced).all()

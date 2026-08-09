@@ -28,6 +28,13 @@ sabr -i antibody.cif -c light_chain -o numbered.cif \
   --scheme chothia --chain-type K
 ```
 
+Use the complete SoftAlign parameter set (encoder, reference embeddings, and
+gap penalties):
+
+```bash
+sabr -i antibody.pdb -c H -o numbered.pdb --mode softalign
+```
+
 Renumber only residues whose source PDB numbers are 1 through 130:
 
 ```bash
@@ -45,13 +52,16 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
+     [-m sabr|softalign]
      [--residue-range START END]
      [--overwrite] [-v]
 ```
 
-The defaults are IMGT, automatic chain selection, and noise level `0.0`.
-Normal output contains only warnings and errors. Use `--verbose` to show the
-JAX backend, chain-selection scores, and a traceback on failure.
+The defaults are IMGT, automatic chain selection, noise level `0.0`, and
+`sabr` mode. SoftAlign mode uses its own fixed references, so `noise_level` is
+ignored in that mode. Normal output contains only warnings and errors. Use
+`--verbose` to show the JAX backend, chain-selection scores, and a traceback
+on failure.
 
 ## Python API
 
@@ -86,6 +96,7 @@ numbered = renumber_structure(
     scheme="kabat",
     chain_type="H",
     noise_level=0.0,
+    mode="softalign",
     residue_range=(1, 130),
 )
 ```
@@ -100,8 +111,13 @@ renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    mode: str = "sabr",
 )
 ```
+
+`mode="softalign"` selects the SoftAlign encoder weights, reference
+embeddings, and exact gap penalties stored in `softalign_gap.npz`. The default
+`mode="sabr"` preserves existing behavior.
 
 Non-target chains, waters, ligands, metadata represented by the input object,
 and residues outside the selected range are preserved in the returned clone.

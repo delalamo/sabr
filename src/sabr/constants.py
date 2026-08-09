@@ -39,6 +39,7 @@ SW_GAP_OPEN = -2.525591
 DEFAULT_TEMPERATURE = 1e-4
 CHAIN_TYPES = ("H", "K", "L")
 NOISE_LEVELS = (0.0, 0.2, 0.5, 1.0, 2.0)
+MODES = ("sabr", "softalign")
 NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
 
 ##################
