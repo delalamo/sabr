@@ -65,16 +65,6 @@ def _apply_length_mask(x, lengths, NINF):
     return x + NINF * (1 - mask), mask
 
 
-def _rotate_gap_matrix(x):
-    """Rotate a gap penalty matrix for striped DP, using 0 as fill value."""
-    a, b = x.shape
-    ar = jnp.arange(a)[::-1, None]
-    br = jnp.arange(b)[None, :]
-    i, j = (br - ar) + (a - 1), (ar + br) // 2
-    n, m = (a + b - 1), (a + b) // 2
-    return jnp.full([n, m], 0.0).at[i, j].set(x)
-
-
 def _affine_score(
     similarities,
     lengths,
@@ -84,6 +74,22 @@ def _affine_score(
     NINF=-1e30,
 ):
     """Return the smooth affine Smith-Waterman score for one matrix."""
+    right_penalties = jnp.asarray(
+        [
+            gap_open,
+            gap_extend,
+            gap_open,
+        ],
+        dtype=similarities.dtype,
+    )
+    down_penalties = jnp.asarray(
+        [
+            gap_open,
+            gap_open,
+            gap_extend,
+        ],
+        dtype=similarities.dtype,
+    )
 
     def step(previous, stripe):
         h2, h1 = previous
@@ -98,10 +104,8 @@ def _affine_score(
             h1,
             _pad(h1[1:], ([0, 1], [0, 0]), NINF),
         )
-        extension = stripe["gap"]
-        opening = stripe["open"]
-        right += jnp.stack([opening, extension, opening], axis=-1)
-        down += jnp.stack([opening, opening, extension], axis=-1)
+        right += right_penalties
+        down += down_penalties
         right = right[:, :2]
 
         h0 = jnp.stack(
@@ -116,8 +120,6 @@ def _affine_score(
 
     similarities, mask = _apply_length_mask(similarities, lengths, NINF)
     stripes, previous, indices = _rotate_for_dp(similarities[:-1, :-1], NINF)
-    stripes["gap"] = _rotate_gap_matrix(gap_extend[:-1, :-1])
-    stripes["open"] = _rotate_gap_matrix(gap_open[:-1, :-1])
     scores = jax.lax.scan(step, previous, stripes, unroll=2)[-1][indices]
     return _soft_maximum(
         scores + similarities[1:, 1:, None],
@@ -128,33 +130,23 @@ def _affine_score(
 
 
 _AFFINE_ALIGNMENT = jax.jit(
-    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, 0, 0))
+    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, None, None))
 )
 
 
-def create_gap_penalties(query_length: int, positions: list) -> tuple:
-    """Create the fixed position-dependent affine gap penalties."""
-    shape = (query_length, len(positions))
-    gap_extend = np.full(shape, constants.SW_GAP_EXTEND, dtype=np.float32)
-    gap_open = np.full(shape, constants.SW_GAP_OPEN, dtype=np.float32)
-    cdr_positions = set()
-    for start, end in constants.IMGT_LOOPS.values():
-        cdr_positions.update(range(start, end + 1))
-    for column, position in enumerate(positions):
-        domain_position = (
-            (position - 1) % constants.IMGT_MAX_POSITION + 1
-            if position > 0
-            else position
-        )
-        if domain_position in cdr_positions:
-            gap_open[:, column] = 0.0
-    return gap_extend, gap_open
-
-
 @functools.cache
-def load_references(noise_level: float, scfv: bool = False) -> dict:
-    """Load single-domain and optional scFv reference embeddings."""
-    filename = f"embeddings_noise_{noise_level:.1f}.npz"
+def load_references(
+    noise_level: float,
+    mode: str = "sabr",
+    scfv: bool = False,
+) -> dict:
+    """Load single-domain and optional scFv references for one mode."""
+    if mode == "sabr":
+        filename = f"embeddings_noise_{noise_level:.1f}.npz"
+    elif mode == "softalign":
+        filename = "softalign_embeddings.npz"
+    else:
+        raise ValueError(f"mode must be one of {constants.MODES}.")
     path = files("sabr.assets") / filename
     with path.open("rb") as handle:
         data = np.load(handle, allow_pickle=True)["arr_0"].item()
@@ -187,6 +179,19 @@ def load_references(noise_level: float, scfv: bool = False) -> dict:
                 ),
             )
     return references
+
+
+@functools.cache
+def load_gap_penalties(mode: str = "sabr") -> tuple[float, float]:
+    """Return the gap extension and opening values for one mode."""
+    if mode == "sabr":
+        return constants.SW_GAP_EXTEND, constants.SW_GAP_OPEN
+    if mode != "softalign":
+        raise ValueError(f"mode must be one of {constants.MODES}.")
+    path = files("sabr.assets") / "softalign_gap.npz"
+    with path.open("rb") as handle:
+        data = np.load(handle, allow_pickle=False)
+        return float(data["gap_extend"]), float(data["gap_open"])
 
 
 def _alignment_path(alignment: np.ndarray) -> np.ndarray:
@@ -286,28 +291,24 @@ def _validate_scfv_alignment(
         raise ValueError("scFv domain assignments overlap or are out of order.")
 
 
-def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
+def _align_reference(
+    query: np.ndarray,
+    reference: np.ndarray,
+    mode: str = "sabr",
+):
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
-    domain_count = (max(positions) - 1) // constants.IMGT_MAX_POSITION + 1
-    augmented_positions = [
-        0,
-        *positions,
-        domain_count * constants.IMGT_MAX_POSITION + 1,
-    ]
-    gap_extend, gap_open = create_gap_penalties(
-        query.shape[0], augmented_positions
-    )
     query_batch = jnp.asarray(query[None, :])
     reference_batch = jnp.asarray(augmented_reference[None, :])
     lengths = jnp.asarray([[query.shape[0], augmented_reference.shape[0]]])
     similarity = jnp.einsum("nia,nja->nij", query_batch, reference_batch)
+    gap_extend, gap_open = load_gap_penalties(mode)
     scores, soft_alignment = _AFFINE_ALIGNMENT(
         similarity,
         lengths,
         constants.DEFAULT_TEMPERATURE,
-        jnp.asarray(gap_extend[None, :]),
-        jnp.asarray(gap_open[None, :]),
+        gap_extend,
+        gap_open,
     )
     return (
         np.asarray(soft_alignment[0])[:, 1:-1],
@@ -316,14 +317,21 @@ def _align_reference(query: np.ndarray, reference: np.ndarray, positions: list):
     )
 
 
-def _affine_gap_penalty(length: int) -> float:
+def _affine_gap_penalty(
+    length: int,
+    gap_extend: float = constants.SW_GAP_EXTEND,
+    gap_open: float = constants.SW_GAP_OPEN,
+) -> float:
     """Return the normal affine score for one gap of the given length."""
     if length <= 0:
         return 0.0
-    return constants.SW_GAP_OPEN + (length - 1) * constants.SW_GAP_EXTEND
+    return gap_open + (length - 1) * gap_extend
 
 
-def _terminal_gap_penalty(alignment: np.ndarray) -> float:
+def _terminal_gap_penalty(
+    alignment: np.ndarray,
+    mode: str = "sabr",
+) -> float:
     """Score unaligned query and reference termini as affine gaps."""
     discrete = np.round(alignment).astype(int)
     path = np.argwhere(discrete == 1)
@@ -338,7 +346,11 @@ def _terminal_gap_penalty(alignment: np.ndarray) -> float:
         alignment.shape[0] - int(last_query) - 1,
         alignment.shape[1] - int(last_reference) - 1,
     )
-    return sum(_affine_gap_penalty(length) for length in terminal_lengths)
+    gap_extend, gap_open = load_gap_penalties(mode)
+    return sum(
+        _affine_gap_penalty(length, gap_extend, gap_open)
+        for length in terminal_lengths
+    )
 
 
 def align(
@@ -346,17 +358,16 @@ def align(
     gap_indices: frozenset,
     chain_type: str,
     noise_level: float,
+    mode: str = "sabr",
     scfv: bool = False,
 ) -> tuple:
     """Align query embeddings and return corrected IMGT alignment metadata."""
-    references = load_references(noise_level, scfv=scfv)
+    references = load_references(noise_level, mode, scfv=scfv)
     candidates = tuple(references) if chain_type == "auto" else (chain_type,)
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, similarity, score = _align_reference(
-            query, reference, positions
-        )
+        reduced, similarity, score = _align_reference(query, reference, mode)
         if (
             not np.isfinite(score)
             or not np.isfinite(reduced).all()
@@ -367,7 +378,7 @@ def align(
             )
         selection_score = score
         if ":" in candidate:
-            terminal_penalty = _terminal_gap_penalty(reduced)
+            terminal_penalty = _terminal_gap_penalty(reduced, mode)
             selection_score += terminal_penalty
             LOGGER.info(
                 "%s reference score: %.4f; terminal gap penalty: %.4f; "
@@ -397,19 +408,16 @@ def align(
     full_alignment[:, np.asarray(positions) - 1] = reduced
     full_alignment = np.round(full_alignment).astype(int)
     if ":" in selected_type:
-        corrected = full_alignment
-        for domain_index, domain_type in enumerate(selected_type.split(":")):
+        corrected = full_alignment.copy()
+        for domain_index, _ in enumerate(selected_type.split(":")):
             start = domain_index * constants.IMGT_MAX_POSITION
             end = start + constants.IMGT_MAX_POSITION
             corrected[:, start:end] = apply_corrections(
                 corrected[:, start:end],
-                domain_type,
                 gap_indices=gap_indices,
             )
         _validate_scfv_alignment(corrected, selected_type)
     else:
-        corrected = apply_corrections(
-            full_alignment, selected_type, gap_indices=gap_indices
-        )
+        corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
         _validate_alignment(corrected, selected_type)
     return corrected, selected_type, score

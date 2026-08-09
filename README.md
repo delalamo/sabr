@@ -31,15 +31,20 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
+     [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
      [--overwrite] [-v]
 ```
 
 Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
-and the entire selected chain. Existing outputs are never replaced unless
-`--overwrite` is given. Normal output contains only warnings and errors; `-v`
-reports reference scores and pipeline decisions.
+`sabr` mode, and the entire selected chain. Existing outputs are never
+replaced unless `--overwrite` is given. Normal output contains only warnings
+and errors; `-v` reports reference scores and pipeline decisions.
+
+Use `--mode softalign` to select the original SoftAlign encoder weights,
+reference embeddings, and affine gap penalties together. SoftAlign references
+do not vary with `--noise-level`, so that option is ignored in this mode.
 
 Use `--scfv` for a single chain containing two linked variable domains. In
 addition to the H, K, and L references, this mode tries the concatenated H:K,
@@ -47,6 +52,8 @@ H:L, K:H, and L:H representations. The second domain is numbered with a 128
 offset so both domains have unique residue IDs in one structure chain; linker
 residues use insertion codes after the first domain. Because each composite
 already specifies both domain types, scFv mode requires automatic chain type.
+Composite references use the selected parameter mode, so `--scfv` can be
+combined with `--mode softalign`.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.
@@ -79,6 +86,7 @@ numbered = renumber_structure(
     scheme="chothia",
     chain_type="auto",
     noise_level=0.0,
+    mode="softalign",
     residue_range=None,
     scfv=False,
 )
@@ -113,12 +121,17 @@ the CLI with mmCIF output.
 
 ## Scientific behavior
 
-- The trained encoder weights and Haiku operations are unchanged.
+- The default `sabr` mode preserves the trained SAbR encoder weights,
+  references, and gap penalties unchanged.
+- The optional `softalign` mode uses `softalign_encoder.npz`,
+  `softalign_embeddings.npz`, and the exact penalties in
+  `softalign_gap.npz` as one parameter set.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- Gap extension is `-0.175027` and gap opening is `-2.525591`.
-- Gap opening is zero only in IMGT CDR1 27–38, CDR2 56–65, and CDR3 105–117.
-- CDR gap distribution, light-chain DE-loop placement, and C-terminal
-  correction are always applied.
+- In `sabr` mode, gap extension is `-0.175027` and gap opening is `-2.525591`.
+  In `softalign` mode, they are `0.1942468136548996` and
+  `-2.5441808700561523`, respectively, as stored in the repository asset.
+- CDR gap distribution is always applied.
+- No deterministic light-chain DE-loop or C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
@@ -127,8 +140,8 @@ the CLI with mmCIF output.
   compared; the underlying alignments and raw alignment scores are unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
-residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop
-correction and emits a warning; other regions continue normally.
+residues exceeds 2.66 Å. A gap skips only the affected CDR correction and
+emits a warning; other regions continue normally.
 
 ## Development
 

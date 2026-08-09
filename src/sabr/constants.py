@@ -40,21 +40,13 @@ DEFAULT_TEMPERATURE = 1e-4
 CHAIN_TYPES = ("H", "K", "L")
 SCFV_CHAIN_TYPES = ("H:K", "H:L", "K:H", "L:H")
 NOISE_LEVELS = (0.0, 0.2, 0.5, 1.0, 2.0)
+MODES = ("sabr", "softalign")
 NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
 
 ##################
 # IMGT constants
 
 IMGT_MAX_POSITION = 128
-
-# DE loop positions 81-84
-FR3_POS81_COL = 80
-FR3_POS82_COL = 81
-FR3_POS83_COL = 82
-FR3_POS84_COL = 83
-
-# C-terminus correction position
-C_TERMINUS_ANCHOR_POSITION = 124
 
 # CDR loop definitions (inclusive)
 IMGT_LOOPS = {

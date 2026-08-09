@@ -28,6 +28,13 @@ sabr -i antibody.cif -c light_chain -o numbered.cif \
   --scheme chothia --chain-type K
 ```
 
+Use the complete SoftAlign parameter set (encoder, reference embeddings, and
+gap penalties):
+
+```bash
+sabr -i antibody.pdb -c H -o numbered.pdb --mode softalign
+```
+
 Renumber only residues whose source PDB numbers are 1 through 130:
 
 ```bash
@@ -45,14 +52,17 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
      [-t auto|H|K|L]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
+     [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
      [--overwrite] [-v]
 ```
 
-The defaults are IMGT, automatic chain selection, and noise level `0.0`.
-Normal output contains only warnings and errors. Use `--verbose` to show the
-JAX backend, chain-selection scores, and a traceback on failure.
+The defaults are IMGT, automatic chain selection, noise level `0.0`, and
+`sabr` mode. SoftAlign mode uses its own fixed references, so `noise_level` is
+ignored in that mode. Normal output contains only warnings and errors. Use
+`--verbose` to show the JAX backend, chain-selection scores, and a traceback
+on failure.
 
 For a single chain containing two linked variable domains, pass `--scfv`.
 This adds H:K, H:L, K:H, and L:H concatenated references to the normal H, K,
@@ -60,6 +70,8 @@ and L candidates. SAbR offsets the second domain's assigned numbers by 128 to
 keep residue IDs unique and numbers the linker as insertions after domain one.
 scFv mode requires the default automatic chain type because each composite
 reference already specifies both domain types.
+Composite references use the selected parameter mode, so `--scfv` can be
+combined with `--mode softalign`.
 
 When candidates are compared, SAbR applies the normal affine gap-open and
 gap-extension costs to unaligned query and reference termini of composite
@@ -99,6 +111,7 @@ numbered = renumber_structure(
     scheme="kabat",
     chain_type="H",
     noise_level=0.0,
+    mode="softalign",
     residue_range=(1, 130),
 )
 ```
@@ -113,9 +126,14 @@ renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    mode: str = "sabr",
     scfv: bool = False,
 )
 ```
+
+`mode="softalign"` selects the SoftAlign encoder weights, reference
+embeddings, and exact gap penalties stored in `softalign_gap.npz`. The default
+`mode="sabr"` preserves existing behavior.
 
 Non-target chains, waters, ligands, metadata represented by the input object,
 and residues outside the selected range are preserved in the returned clone.
@@ -140,8 +158,8 @@ are required.
 ## Structural gaps and modified residues
 
 A C–N distance above 2.66 Å is treated as a structural gap. If a gap crosses a
-CDR or light-chain DE-loop region, SAbR warns and retains the learned alignment
-for that region while continuing corrections elsewhere.
+CDR, SAbR warns and retains the learned alignment for that region while
+continuing corrections elsewhere.
 
 Supported modified peptide residues are translated to their canonical parent
 only for sequence generation. Original residue names and atoms are preserved.

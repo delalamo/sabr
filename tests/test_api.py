@@ -33,20 +33,30 @@ def _gemmi_ids(structure, chain):
     ]
 
 
-def _stub_pipeline(monkeypatch):
+def _stub_pipeline(monkeypatch, captured_modes=None):
+    def fake_encode(coords, mode):
+        if captured_modes is not None:
+            captured_modes["encoder"] = mode
+        return np.zeros((len(coords), 64))
+
+    def fake_align(embeddings, gaps, chain_type, noise, mode, scfv):
+        if captured_modes is not None:
+            captured_modes["alignment"] = mode
+        return (
+            np.zeros((len(embeddings), 128), dtype=int),
+            "H" if chain_type == "auto" else chain_type,
+            0.0,
+        )
+
     monkeypatch.setattr(
         api,
         "encode",
-        lambda coords: np.zeros((len(coords), 64)),
+        fake_encode,
     )
     monkeypatch.setattr(
         api,
         "align",
-        lambda embeddings, gaps, chain_type, noise, scfv: (
-            np.zeros((len(embeddings), 128), dtype=int),
-            "H" if chain_type == "auto" else chain_type,
-            0.0,
-        ),
+        fake_align,
     )
     monkeypatch.setattr(
         api,
@@ -153,6 +163,19 @@ def test_arbitrary_gemmi_chain_ids_are_supported(monkeypatch):
     assert result[0][0].name == "heavy_chain"
 
 
+def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
+    captured_modes = {}
+    _stub_pipeline(monkeypatch, captured_modes)
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    renumber_structure(structure, "F", mode="softalign")
+    assert captured_modes == {
+        "encoder": "softalign",
+        "alignment": "softalign",
+    }
+
+
 def test_missing_backbone_is_reported_with_the_residue():
     structure = PDBParser(QUIET=True).get_structure(
         "missing", DATA / "test_no_backbone.pdb"
@@ -205,6 +228,8 @@ def test_multiple_models_are_rejected():
         ({"chain_type": None}, "chain_type"),
         ({"noise_level": "invalid"}, "noise_level"),
         ({"noise_level": False}, "noise_level"),
+        ({"mode": "other"}, "mode"),
+        ({"mode": None}, "mode"),
         ({"residue_range": (False, 10)}, "residue_range"),
         ({"scfv": "yes"}, "scfv"),
         ({"scfv": True, "chain_type": "H"}, "auto"),

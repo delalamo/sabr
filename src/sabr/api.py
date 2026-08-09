@@ -16,6 +16,7 @@ def _validate_options(
     chain_type: str,
     noise_level: float,
     residue_range: tuple | None,
+    mode: str,
     scfv: bool,
 ) -> tuple:
     if (
@@ -60,11 +61,19 @@ def _validate_options(
             )
         if residue_range[0] > residue_range[1]:
             raise ValueError("residue_range start must not exceed its end.")
+    if not isinstance(mode, str) or mode.lower() not in constants.MODES:
+        raise ValueError(f"mode must be one of {', '.join(constants.MODES)}.")
     if not isinstance(scfv, bool):
         raise ValueError("scfv must be a boolean.")
     if scfv and normalized_chain_type != "auto":
         raise ValueError("scfv requires chain_type='auto'.")
-    return scheme.lower(), normalized_chain_type, normalized_noise, scfv
+    return (
+        scheme.lower(),
+        normalized_chain_type,
+        normalized_noise,
+        mode.lower(),
+        scfv,
+    )
 
 
 def renumber_structure(
@@ -74,19 +83,26 @@ def renumber_structure(
     chain_type: str = "auto",
     noise_level: float = 0.0,
     residue_range: tuple[int, int] | None = None,
+    mode: str = "sabr",
     scfv: bool = False,
 ):
-    """Return a non-mutating, same-type renumbered structure."""
-    scheme, chain_type, noise_level, scfv = _validate_options(
-        scheme, chain_type, noise_level, residue_range, scfv
+    """Return a non-mutating, same-type renumbered structure.
+
+    ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
+    penalties as one scientifically consistent parameter set. ``scfv=True``
+    adds the four supported two-domain composite references.
+    """
+    scheme, chain_type, noise_level, mode, scfv = _validate_options(
+        scheme, chain_type, noise_level, residue_range, mode, scfv
     )
     data = extract_chain(structure, chain, residue_range)
-    embeddings = encode(data.coords)
+    embeddings = encode(data.coords, mode)
     imgt_alignment, selected_type, score = align(
         embeddings,
         data.gap_indices,
         chain_type,
         noise_level,
+        mode=mode,
         scfv=scfv,
     )
     LOGGER.info(
