@@ -272,6 +272,11 @@ def test_default_single_domain_numbering_skips_reference_completion(
 ):
     monkeypatch.setattr(
         numbering,
+        "_load_missing_imgt_positions",
+        lambda: pytest.fail("default path loaded reference metadata"),
+    )
+    monkeypatch.setattr(
+        numbering,
         "_insert_missing_deletions",
         lambda *args: pytest.fail("default path completed reference states"),
     )
@@ -357,6 +362,11 @@ def test_scfv_numbering_offsets_second_domain_and_numbers_linker(monkeypatch):
             return [((1, ""), "A"), ((2, ""), "C")], 0, 1
         return [((1, ""), "E"), ((2, ""), "F")], 0, 1
 
+    monkeypatch.setattr(
+        numbering,
+        "_load_missing_imgt_positions",
+        lambda: pytest.fail("scFv path loaded reference metadata"),
+    )
     monkeypatch.setattr(
         numbering,
         "_insert_missing_deletions",

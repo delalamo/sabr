@@ -1,6 +1,9 @@
 """Convert an IMGT alignment into one of ANARCI's numbering schemes."""
 
+import functools
 import logging
+from collections.abc import Mapping
+from importlib.resources import files
 
 import numpy as np
 
@@ -9,54 +12,40 @@ from sabr._anarci import schemes
 
 LOGGER = logging.getLogger(__name__)
 
-MISSING_IMGT_POSITIONS = {
-    "H": frozenset({10, 31, 32, 33, 34, 60, 61, 73}),
-    "K": frozenset(
-        {
-            31,
-            32,
-            33,
-            34,
-            35,
-            58,
-            59,
-            60,
-            61,
-            62,
-            63,
-            64,
-            73,
-            81,
-            82,
-            110,
-            111,
-            112,
-            113,
-            128,
-        }
-    ),
-    "L": frozenset(
-        {
-            10,
-            32,
-            33,
-            34,
-            58,
-            59,
-            60,
-            61,
-            62,
-            63,
-            64,
-            73,
-            81,
-            82,
-            111,
-            112,
-            128,
-        }
-    ),
-}
+
+@functools.cache
+def _load_missing_imgt_positions() -> dict[str, frozenset[int]]:
+    """Derive absent IMGT positions from the canonical reference metadata."""
+    path = files("sabr.assets") / "embeddings_noise_0.0.npz"
+    with (
+        path.open("rb") as handle,
+        np.load(handle, allow_pickle=True) as archive,
+    ):
+        data = archive["arr_0"].item()
+
+    all_positions = frozenset(range(1, constants.IMGT_MAX_POSITION + 1))
+    return {
+        chain_type: all_positions.difference(
+            int(position) for position in data[chain_type]["idxs"]
+        )
+        for chain_type in constants.CHAIN_TYPES
+    }
+
+
+class _MissingIMGTPositions(Mapping[str, frozenset[int]]):
+    """Read-only, lazily loaded missing-position metadata."""
+
+    def __getitem__(self, chain_type: str) -> frozenset[int]:
+        return _load_missing_imgt_positions()[chain_type]
+
+    def __iter__(self):
+        return iter(_load_missing_imgt_positions())
+
+    def __len__(self) -> int:
+        return len(_load_missing_imgt_positions())
+
+
+MISSING_IMGT_POSITIONS = _MissingIMGTPositions()
 _TCR_CHAIN_TYPES = frozenset({"A", "B", "G", "D"})
 
 
