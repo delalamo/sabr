@@ -1,4 +1,4 @@
-"""Deterministic CDR corrections."""
+"""Deterministic CDR and DE-loop corrections."""
 
 import logging
 import warnings
@@ -143,14 +143,77 @@ def correct_cdr_loop(
     return aln
 
 
+def de_loop_positions(n_residues: int) -> list[int]:
+    """Return IMGT positions for residues between anchors 80 and 83.
+
+    The SAbDab consensus skips 81 for a one-residue loop, uses 81 and 82
+    for a two-residue loop, and places any additional insertions on 82.
+    """
+    if n_residues == 0:
+        return []
+    if n_residues == 1:
+        return [82]
+    return [81, 82] + [82] * (n_residues - 2)
+
+
+def correct_de_loop(
+    aln: np.ndarray,
+    gap_indices: frozenset[int] | None = None,
+) -> np.ndarray:
+    """Assign the residues between IMGT 80 and 83 by loop length."""
+    anchor_80_row = _aligned_row_near(aln, 79)
+    anchor_83_row = _aligned_row_near(aln, 82)
+
+    if anchor_80_row is None or anchor_83_row is None:
+        LOGGER.warning(
+            "Skipping DE loop correction; missing anchor near IMGT 80 or 83."
+        )
+        return aln
+    if anchor_80_row >= anchor_83_row:
+        LOGGER.warning(
+            "Skipping DE loop correction; anchor 80 row (%d) is not before "
+            "anchor 83 row (%d).",
+            anchor_80_row,
+            anchor_83_row,
+        )
+        return aln
+    if _skip_for_structural_gap(
+        gap_indices, anchor_80_row, anchor_83_row, "DE loop (80-83)"
+    ):
+        return aln
+
+    intermediate_rows = list(range(anchor_80_row + 1, anchor_83_row))
+    positions = de_loop_positions(len(intermediate_rows))
+
+    # Clear the learned assignments for this region before rebuilding it.
+    # Additional occurrences of 82 remain unassigned here; alignment_to_states
+    # converts those orphan rows to 82A, 82B, and later insertion states.
+    aln[intermediate_rows, :] = 0
+    assigned_positions = set()
+    for row, position in zip(intermediate_rows, positions):
+        if position in assigned_positions:
+            continue
+        aln[row, position - 1] = 1
+        assigned_positions.add(position)
+
+    if intermediate_rows:
+        LOGGER.info(
+            "DE loop correction: assigned %d residue(s) to %s.",
+            len(intermediate_rows),
+            positions,
+        )
+    return aln
+
+
 def apply_corrections(
     aln: np.ndarray,
     gap_indices: frozenset[int] | None = None,
 ) -> np.ndarray:
-    """Apply deterministic CDR corrections."""
+    """Apply deterministic CDR and DE-loop corrections."""
     for loop_name, (cdr_start, cdr_end) in constants.IMGT_LOOPS.items():
         correct_cdr_loop(
             aln, loop_name, cdr_start, cdr_end, gap_indices=gap_indices
         )
 
+    correct_de_loop(aln, gap_indices=gap_indices)
     return aln
