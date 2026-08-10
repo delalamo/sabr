@@ -1,6 +1,9 @@
 """Convert an IMGT alignment into one of ANARCI's numbering schemes."""
 
+import functools
 import logging
+from collections.abc import Mapping
+from importlib.resources import files
 
 import numpy as np
 
@@ -10,10 +13,82 @@ from sabr._anarci import schemes
 LOGGER = logging.getLogger(__name__)
 
 
-def alignment_to_states(matrix: np.ndarray) -> tuple:
+@functools.cache
+def _load_missing_imgt_positions() -> dict[str, frozenset[int]]:
+    """Derive absent IMGT positions from the canonical reference metadata."""
+    path = files("sabr.assets") / "embeddings_noise_0.0.npz"
+    with (
+        path.open("rb") as handle,
+        np.load(handle, allow_pickle=True) as archive,
+    ):
+        data = archive["arr_0"].item()
+
+    all_positions = frozenset(range(1, constants.IMGT_MAX_POSITION + 1))
+    return {
+        chain_type: all_positions.difference(
+            int(position) for position in data[chain_type]["idxs"]
+        )
+        for chain_type in constants.CHAIN_TYPES
+    }
+
+
+class _MissingIMGTPositions(Mapping[str, frozenset[int]]):
+    """Read-only, lazily loaded missing-position metadata."""
+
+    def __getitem__(self, chain_type: str) -> frozenset[int]:
+        return _load_missing_imgt_positions()[chain_type]
+
+    def __iter__(self):
+        return iter(_load_missing_imgt_positions())
+
+    def __len__(self) -> int:
+        return len(_load_missing_imgt_positions())
+
+
+MISSING_IMGT_POSITIONS = _MissingIMGTPositions()
+_TCR_CHAIN_TYPES = frozenset({"A", "B", "G", "D"})
+
+
+def _validate_reference_positions(
+    matrix: np.ndarray,
+    ref_positions: tuple[int, ...] | None,
+) -> tuple[int, ...] | None:
+    """Validate and normalize reduced-reference IMGT positions."""
+    if ref_positions is None:
+        return None
+    if not isinstance(ref_positions, tuple):
+        raise ValueError("ref_positions must be a tuple.")
+    if len(ref_positions) != matrix.shape[1]:
+        raise ValueError(
+            "ref_positions length must match the alignment column count."
+        )
+    if not all(
+        isinstance(position, int) and not isinstance(position, bool)
+        for position in ref_positions
+    ):
+        raise ValueError("ref_positions must contain only integers.")
+    if not all(
+        1 <= position <= constants.IMGT_MAX_POSITION
+        for position in ref_positions
+    ):
+        raise ValueError("ref_positions must be between IMGT 1 and 128.")
+    if any(
+        right <= left for left, right in zip(ref_positions, ref_positions[1:])
+    ):
+        raise ValueError("ref_positions must be strictly increasing.")
+    return ref_positions
+
+
+def alignment_to_states(
+    matrix: np.ndarray,
+    *,
+    ref_positions: tuple[int, ...] | None = None,
+) -> tuple:
     """Return ANARCI-compatible states and the first aligned query row."""
     if matrix.ndim != 2:
         raise ValueError("Alignment matrix must be two-dimensional.")
+    if ref_positions is not None:
+        ref_positions = _validate_reference_positions(matrix, ref_positions)
     path = sorted(np.argwhere(matrix.T == 1).tolist())
     if not path:
         raise ValueError("Alignment matrix contains no aligned residues.")
@@ -29,11 +104,19 @@ def alignment_to_states(matrix: np.ndarray) -> tuple:
     orphan_rows = {
         row for row in range(first_row, last_row + 1) if row not in row_columns
     }
-    offset = first_column - first_row
+    first_position = (
+        ref_positions[first_column]
+        if ref_positions is not None
+        else first_column + 1
+    )
+    imgt_start = first_position - 1
+    offset = imgt_start - first_row
     states = []
 
     for column in range(first_column, last_column + 1):
-        imgt_position = column + 1
+        imgt_position = (
+            ref_positions[column] if ref_positions is not None else column + 1
+        )
         if column not in column_rows:
             states.append(((imgt_position, "d"), None))
             continue
@@ -53,10 +136,35 @@ def alignment_to_states(matrix: np.ndarray) -> tuple:
                 if row in orphan_rows:
                     states.append(((imgt_position, "i"), row + offset))
 
-    return states, first_column, first_row
+    return states, imgt_start, first_row
+
+
+def _insert_missing_deletions(states: list, ref_type: str) -> list:
+    """Add absent reference positions as idempotent deletion states."""
+    if ref_type not in MISSING_IMGT_POSITIONS:
+        raise ValueError("ref_type must be 'H', 'K', or 'L'.")
+
+    represented = {state[0][0] for state in states}
+    missing = MISSING_IMGT_POSITIONS[ref_type].difference(represented)
+    if not missing:
+        return states
+
+    completed = [
+        *states,
+        *[((position, "d"), None) for position in sorted(missing)],
+    ]
+    completed.sort(key=lambda state: state[0][0])
+    LOGGER.debug(
+        "Inserted %d deletion states for the %s reference.",
+        len(missing),
+        ref_type,
+    )
+    return completed
 
 
 def _apply_scheme(states: list, sequence: str, scheme: str, chain_type: str):
+    if chain_type in _TCR_CHAIN_TYPES and scheme not in ("imgt", "aho"):
+        raise ValueError("TCR chain types support only IMGT or AHo numbering.")
     if scheme == "imgt":
         return schemes.number_imgt(states, sequence)
     if scheme == "aho":
@@ -91,9 +199,27 @@ def _number_domain_alignment(
     sequence: str,
     scheme: str,
     chain_type: str,
+    *,
+    ref_type: str | None = None,
+    ref_positions: tuple[int, ...] | None = None,
 ) -> tuple:
-    """Return explicit query-row records for one 128-column domain."""
-    states, imgt_start, first_row = alignment_to_states(alignment)
+    """Return query-row records, optionally restoring a reduced reference."""
+    states, imgt_start, first_row = alignment_to_states(
+        alignment,
+        ref_positions=ref_positions,
+    )
+    if ref_type is not None:
+        if ref_type not in MISSING_IMGT_POSITIONS:
+            raise ValueError("ref_type must be 'H', 'K', or 'L'.")
+        if ref_positions is not None:
+            missing_positions = frozenset(
+                range(1, constants.IMGT_MAX_POSITION + 1)
+            ).difference(ref_positions)
+            if missing_positions != MISSING_IMGT_POSITIONS[ref_type]:
+                raise ValueError(
+                    f"ref_positions do not match the {ref_type} reference."
+                )
+        states = _insert_missing_deletions(states, ref_type)
     padded_sequence = "-" * imgt_start + sequence[first_row:]
     numbered, start, end = _apply_scheme(
         states, padded_sequence, scheme, chain_type
@@ -137,10 +263,31 @@ def number_alignment(
     sequence: str,
     scheme: str,
     chain_type: str,
+    *,
+    ref_type: str | None = None,
+    ref_positions: tuple[int, ...] | None = None,
 ) -> tuple:
-    """Return explicit query-row-to-number records for one alignment."""
+    """Return query-row-to-number records for one alignment.
+
+    ``ref_type`` and ``ref_positions`` are opt-in metadata for reduced
+    single-domain references. Normal 128-column antibody and 256-column scFv
+    alignments leave them unset.
+    """
     if ":" not in chain_type:
-        return _number_domain_alignment(alignment, sequence, scheme, chain_type)
+        return _number_domain_alignment(
+            alignment,
+            sequence,
+            scheme,
+            chain_type,
+            ref_type=ref_type,
+            ref_positions=ref_positions,
+        )
+
+    if ref_type is not None or ref_positions is not None:
+        raise ValueError(
+            "Reference metadata is supported only for single-domain "
+            "alignments."
+        )
 
     chain_types = chain_type.split(":")
     expected_columns = len(chain_types) * constants.IMGT_MAX_POSITION

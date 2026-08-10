@@ -143,6 +143,13 @@ A structural gap is detected when the C–N distance between consecutive
 residues exceeds 2.66 Å. A gap skips only the affected CDR correction and
 emits a warning; other regions continue normally.
 
+T-cell receptors are not an officially supported SAbR target. For
+experimental low-level use, align a TCR against the K reference because that
+reference includes IMGT position 10, as TCRs do. Pass the actual TCR chain
+type (`A`, `B`, `G`, or `D`) only to the ANARCI conversion step, together with
+`ref_type="K"`. This workaround is limited to IMGT and AHo numbering; the
+other bundled schemes are antibody-specific.
+
 ## Development
 
 ```bash

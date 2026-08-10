@@ -166,6 +166,16 @@ only for sequence generation. Original residue names and atoms are preserved.
 Unknown or ambiguous polymer chemistry is rejected rather than converted to
 `X`.
 
+## Experimental TCR use
+
+T-cell receptors are not an officially supported SAbR target. Experimental
+users of the low-level alignment and numbering modules should align TCRs
+against the K reference because it includes IMGT position 10, as TCRs do.
+Pass the actual TCR chain type (`A`, `B`, `G`, or `D`) only to the ANARCI
+conversion step, together with `ref_type="K"`. This workaround supports IMGT
+and AHo numbering only; Chothia, Kabat, Martin, and Wolfguy are
+antibody-specific.
+
 ## Errors
 
 Common errors include:
