@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reference alignment using the validated affine Smith-Waterman method."""
 
 import functools
@@ -230,46 +229,6 @@ def _alignment_path(alignment: np.ndarray) -> np.ndarray:
     return path
 
 
-def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
-    """Reject ambiguous paths before they are converted to numbering states."""
-    path = _alignment_path(alignment)
-    rows = path[:, 0]
-    columns = path[:, 1]
-
-    first_row = int(rows[0])
-    first_position = int(columns[0]) + 1
-    if first_row and first_position - first_row < 1:
-        raise ValueError(
-            "N-terminal residues would require non-positive numbering; "
-            "use residue_range to select the antibody domain."
-        )
-
-    regions = [*constants.IMGT_LOOPS.values(), (79, 85)]
-    for index, (left_row, right_row) in enumerate(zip(rows, rows[1:])):
-        if right_row == left_row + 1:
-            continue
-        left_position = int(columns[index]) + 1
-        right_position = int(columns[index + 1]) + 1
-        if not any(
-            start <= left_position <= end and start <= right_position <= end
-            for start, end in regions
-        ):
-            raise ValueError(
-                f"Unassigned query rows {left_row + 1}-{right_row - 1} "
-                f"are bracketed by IMGT {left_position} and "
-                f"{right_position}; use residue_range to select one "
-                "antibody domain."
-            )
-
-    last_row = int(rows[-1])
-    last_position = int(columns[-1]) + 1
-    if last_row < alignment.shape[0] - 1 and last_position < 125:
-        raise ValueError(
-            f"Unassigned trailing query rows follow IMGT {last_position}; "
-            "use residue_range to select the antibody domain."
-        )
-
-
 def _validate_scfv_alignment(
     alignment: np.ndarray, representation: str
 ) -> None:
@@ -281,7 +240,6 @@ def _validate_scfv_alignment(
         )
     _alignment_path(alignment)
 
-    domain_rows = []
     for domain_index, chain_type in enumerate(representation.split(":")):
         start = domain_index * constants.IMGT_MAX_POSITION
         end = start + constants.IMGT_MAX_POSITION
@@ -291,14 +249,6 @@ def _validate_scfv_alignment(
             raise ValueError(
                 f"scFv {chain_type} domain contains no assigned residues."
             )
-        domain_rows.append((int(assigned_rows[0]), int(assigned_rows[-1])))
-        if domain_index == 0:
-            _validate_alignment(domain[: assigned_rows[-1] + 1], chain_type)
-        else:
-            _validate_alignment(domain[assigned_rows[0] :], chain_type)
-
-    if domain_rows[0][1] >= domain_rows[1][0]:
-        raise ValueError("scFv domain assignments overlap or are out of order.")
 
 
 def _align_reference(
@@ -446,5 +396,5 @@ def align(
         _validate_scfv_alignment(corrected, selected_type)
     else:
         corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
-        _validate_alignment(corrected, selected_type)
+        _alignment_path(corrected)
     return corrected, selected_type, score

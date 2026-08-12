@@ -159,11 +159,21 @@ def test_query_row_mapping_validates_order_span_and_sequence():
         (5, ""),
     ]
 
+    non_positive_mapping = _new_residue_ids(
+        data, [(2, 1, "", data.sequence[2])]
+    )
+    assert [non_positive_mapping[index] for index in data.residue_indices] == [
+        (-1, ""),
+        (0, ""),
+        (1, ""),
+        (2, ""),
+        (3, ""),
+    ]
+
     for malformed, message in (
         ([records[1], records[0]], "unordered"),
         ([records[0], records[2]], "internal"),
         ([(99, 1, "", "A")], "outside"),
-        ([(1, 1, "", data.sequence[1])], "non-positive"),
         ([(1, 2, "", "X")], "mismatch"),
     ):
         with pytest.raises(ValueError, match=message):

@@ -10,12 +10,6 @@ from sabr import constants
 LOGGER = logging.getLogger(__name__)
 
 
-def _has_gap_in_region(
-    gap_indices: frozenset[int], start_row: int, end_row: int
-) -> bool:
-    return any(index in gap_indices for index in range(start_row, end_row))
-
-
 def _aligned_row_near(aln: np.ndarray, target_col: int) -> int | None:
     """Return the row aligned at or within two columns of a target."""
     for offset in (0, -1, 1, -2, 2):
@@ -49,7 +43,9 @@ def _skip_for_structural_gap(
     region_name: str,
 ) -> bool:
     """Warn and return true when a regional correction crosses a gap."""
-    if gap_indices and _has_gap_in_region(gap_indices, start_row, end_row):
+    if gap_indices and any(
+        index in gap_indices for index in range(start_row, end_row)
+    ):
         message = (
             f"Skipping {region_name} deterministic correction: structural "
             f"gap detected between rows {start_row} and {end_row}; using "
@@ -212,7 +208,7 @@ def apply_corrections(
 ) -> np.ndarray:
     """Apply deterministic CDR and DE-loop corrections."""
     for loop_name, (cdr_start, cdr_end) in constants.IMGT_LOOPS.items():
-        correct_cdr_loop(
+        aln = correct_cdr_loop(
             aln, loop_name, cdr_start, cdr_end, gap_indices=gap_indices
         )
 
