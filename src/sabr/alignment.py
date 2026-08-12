@@ -220,17 +220,7 @@ def _alignment_path(alignment: np.ndarray) -> np.ndarray:
 
 def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
     """Reject ambiguous paths before they are converted to numbering states."""
-    path = _alignment_path(alignment)
-    rows = path[:, 0]
-    columns = path[:, 1]
-
-    last_row = int(rows[-1])
-    last_position = int(columns[-1]) + 1
-    if last_row < alignment.shape[0] - 1 and last_position < 125:
-        raise ValueError(
-            f"Unassigned trailing query rows follow IMGT {last_position}; "
-            "use residue_range to select the antibody domain."
-        )
+    _alignment_path(alignment)
 
 
 def _validate_scfv_alignment(

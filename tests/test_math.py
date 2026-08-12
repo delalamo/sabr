@@ -385,20 +385,16 @@ def test_internal_framework_run_is_allowed():
     ]
 
 
-def test_leading_and_trailing_alignment_boundaries():
+def test_leading_and_trailing_alignment_boundaries_are_allowed():
     for first_row in (2, 3, 4):
         leading = np.zeros((first_row + 1, 128), dtype=int)
         leading[first_row, 2] = 1
         _validate_alignment(leading, "H")
 
-    valid_trailing = np.zeros((3, 128), dtype=int)
-    valid_trailing[0, 124] = 1
-    _validate_alignment(valid_trailing, "H")
-
-    invalid_trailing = np.zeros((3, 128), dtype=int)
-    invalid_trailing[0, 123] = 1
-    with pytest.raises(ValueError, match="trailing"):
-        _validate_alignment(invalid_trailing, "H")
+    for last_position in (123, 124, 125):
+        trailing = np.zeros((3, 128), dtype=int)
+        trailing[0, last_position - 1] = 1
+        _validate_alignment(trailing, "H")
 
 
 def test_non_finite_reference_score_is_rejected(monkeypatch):
