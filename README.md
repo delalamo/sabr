@@ -137,6 +137,8 @@ the CLI with mmCIF output.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
+- Composite candidates do not apply gap-open or gap-extension costs to query
+  linker residues aligned at the boundary between their two references.
 - Composite candidates receive normal affine gap-open and gap-extension costs
   for unaligned query and reference termini when their selection scores are
   compared; the underlying alignments and raw alignment scores are unchanged.

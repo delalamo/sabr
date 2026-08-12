@@ -72,6 +72,9 @@ scFv mode requires the default automatic chain type because each composite
 reference already specifies both domain types.
 Composite references use the selected parameter mode, so `--scfv` can be
 combined with `--mode softalign`.
+Gap-open and gap-extension penalties are disabled for query linker residues
+aligned at the boundary between the two references. All other internal gap
+transitions retain the selected parameter mode's normal penalties.
 
 When candidates are compared, SAbR applies the normal affine gap-open and
 gap-extension costs to unaligned query and reference termini of composite
