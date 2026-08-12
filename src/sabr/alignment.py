@@ -224,33 +224,6 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
     rows = path[:, 0]
     columns = path[:, 1]
 
-    first_row = int(rows[0])
-    first_position = int(columns[0]) + 1
-    if first_row and first_position - first_row < 1:
-        raise ValueError(
-            "N-terminal residues would require non-positive numbering; "
-            "use residue_range to select the antibody domain."
-        )
-
-    regions = list(constants.IMGT_LOOPS.values())
-    if chain_type in ("K", "L"):
-        regions.append((79, 84))
-    for index, (left_row, right_row) in enumerate(zip(rows, rows[1:])):
-        if right_row == left_row + 1:
-            continue
-        left_position = int(columns[index]) + 1
-        right_position = int(columns[index + 1]) + 1
-        if not any(
-            start <= left_position <= end and start <= right_position <= end
-            for start, end in regions
-        ):
-            raise ValueError(
-                f"Unassigned query rows {left_row + 1}-{right_row - 1} "
-                f"are bracketed by IMGT {left_position} and "
-                f"{right_position}; use residue_range to select one "
-                "antibody domain."
-            )
-
     last_row = int(rows[-1])
     last_position = int(columns[-1]) + 1
     if last_row < alignment.shape[0] - 1 and last_position < 125:

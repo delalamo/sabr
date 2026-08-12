@@ -17,7 +17,7 @@ from sabr.alignment import (
     load_references,
 )
 from sabr.model import encode, load_parameters
-from sabr.numbering import MISSING_IMGT_POSITIONS
+from sabr.numbering import MISSING_IMGT_POSITIONS, alignment_to_states
 from sabr.structure import extract_chain
 
 DATA = Path(__file__).parent / "data"
@@ -371,24 +371,25 @@ def test_malformed_alignments_are_rejected(alignment, message):
         _validate_alignment(alignment, "H")
 
 
-def test_internal_framework_run_is_rejected():
+def test_internal_framework_run_is_allowed():
     alignment = np.zeros((4, 128), dtype=int)
     alignment[0, 19] = 1
     alignment[3, 20] = 1
-    with pytest.raises(ValueError, match="residue_range"):
-        _validate_alignment(alignment, "H")
+    _validate_alignment(alignment, "H")
+    states, _, _ = alignment_to_states(alignment)
+    assert [state for state, _ in states] == [
+        (20, "m"),
+        (20, "i"),
+        (20, "i"),
+        (21, "m"),
+    ]
 
 
 def test_leading_and_trailing_alignment_boundaries():
-    valid_leading = np.zeros((4, 128), dtype=int)
-    valid_leading[2, 2] = 1
-    valid_leading[3, 3] = 1
-    _validate_alignment(valid_leading, "H")
-
-    invalid_leading = np.zeros((4, 128), dtype=int)
-    invalid_leading[3, 2] = 1
-    with pytest.raises(ValueError, match="non-positive"):
-        _validate_alignment(invalid_leading, "H")
+    for first_row in (2, 3, 4):
+        leading = np.zeros((first_row + 1, 128), dtype=int)
+        leading[first_row, 2] = 1
+        _validate_alignment(leading, "H")
 
     valid_trailing = np.zeros((3, 128), dtype=int)
     valid_trailing[0, 124] = 1
