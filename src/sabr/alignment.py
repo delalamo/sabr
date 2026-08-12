@@ -15,16 +15,18 @@ from sabr.corrections import apply_corrections
 LOGGER = logging.getLogger(__name__)
 
 
-def _rotate_for_dp(x, NINF):
+def _rotate_for_dp(x, NINF, free_gap_boundary=-1):
     """Rotate a matrix for striped dynamic programming."""
     a, b = x.shape
     ar = jnp.arange(a)[::-1, None]
     br = jnp.arange(b)[None, :]
     i, j = (br - ar) + (a - 1), (ar + br) // 2
     n, m = (a + b - 1), (a + b) // 2
+    free_gap = jnp.broadcast_to(br == free_gap_boundary, (a, b))
     output = {
         "x": jnp.full([n, m], NINF).at[i, j].set(x),
         "o": (jnp.arange(n) + a % 2) % 2,
+        "free_gap": jnp.full([n, m], False).at[i, j].set(free_gap),
     }
     prev = (jnp.full((m, 3), NINF), jnp.full((m, 3), NINF))
     return output, prev, (i, j)
@@ -71,9 +73,10 @@ def _affine_score(
     temperature,
     gap_extend,
     gap_open,
+    free_gap_boundary=-1,
     NINF=-1e30,
 ):
-    """Return the smooth affine Smith-Waterman score for one matrix."""
+    """Return a score, optionally making one reference gap boundary free."""
     right_penalties = jnp.asarray(
         [
             gap_open,
@@ -105,7 +108,11 @@ def _affine_score(
             _pad(h1[1:], ([0, 1], [0, 0]), NINF),
         )
         right += right_penalties
-        down += down_penalties
+        down += jnp.where(
+            stripe["free_gap"][:, None],
+            0,
+            down_penalties,
+        )
         right = right[:, :2]
 
         h0 = jnp.stack(
@@ -119,7 +126,9 @@ def _affine_score(
         return (h1, h0), h0
 
     similarities, mask = _apply_length_mask(similarities, lengths, NINF)
-    stripes, previous, indices = _rotate_for_dp(similarities[:-1, :-1], NINF)
+    stripes, previous, indices = _rotate_for_dp(
+        similarities[:-1, :-1], NINF, free_gap_boundary
+    )
     scores = jax.lax.scan(step, previous, stripes, unroll=2)[-1][indices]
     return _soft_maximum(
         scores + similarities[1:, 1:, None],
@@ -130,7 +139,10 @@ def _affine_score(
 
 
 _AFFINE_ALIGNMENT = jax.jit(
-    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, None, None))
+    jax.vmap(
+        jax.value_and_grad(_affine_score),
+        (0, 0, None, None, None, None),
+    )
 )
 
 
@@ -295,7 +307,9 @@ def _align_reference(
     query: np.ndarray,
     reference: np.ndarray,
     mode: str = "sabr",
+    free_gap_boundary: int = -1,
 ):
+    """Align one reference, optionally allowing a free query insertion."""
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
     query_batch = jnp.asarray(query[None, :])
@@ -309,6 +323,7 @@ def _align_reference(
         constants.DEFAULT_TEMPERATURE,
         gap_extend,
         gap_open,
+        free_gap_boundary,
     )
     return (
         np.asarray(soft_alignment[0])[:, 1:-1],
@@ -367,7 +382,21 @@ def align(
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, similarity, score = _align_reference(query, reference, mode)
+        if ":" in candidate:
+            free_gap_boundary = sum(
+                position <= constants.IMGT_MAX_POSITION
+                for position in positions
+            )
+            reduced, similarity, score = _align_reference(
+                query,
+                reference,
+                mode,
+                free_gap_boundary=free_gap_boundary,
+            )
+        else:
+            reduced, similarity, score = _align_reference(
+                query, reference, mode
+            )
         if (
             not np.isfinite(score)
             or not np.isfinite(reduced).all()

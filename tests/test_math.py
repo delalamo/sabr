@@ -8,6 +8,7 @@ import pytest
 from sabr import constants
 from sabr.alignment import (
     _affine_gap_penalty,
+    _affine_score,
     _align_reference,
     _terminal_gap_penalty,
     _validate_alignment,
@@ -159,6 +160,38 @@ def test_scfv_alignment_allows_an_unassigned_linker_between_domains():
     _validate_scfv_alignment(alignment, "H:K")
 
 
+@pytest.mark.parametrize("linker_length", (1, 3))
+def test_scfv_reference_boundary_has_no_affine_linker_penalty(linker_length):
+    query_length = linker_length + 2
+    similarities = np.full((query_length, 4), -100.0, dtype=np.float32)
+    similarities[:, (0, 3)] = 0.0
+    similarities[0, 1] = 10.0
+    similarities[-1, 2] = 10.0
+    lengths = np.asarray((query_length, similarities.shape[1]))
+    gap_extend = -1.0
+    gap_open = -3.0
+
+    penalized = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend,
+        gap_open,
+    )
+    free = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend,
+        gap_open,
+        free_gap_boundary=1,
+    )
+
+    expected_penalty = gap_open + (linker_length - 1) * gap_extend
+    assert float(penalized) == pytest.approx(20.0 + expected_penalty)
+    assert float(free) == pytest.approx(20.0)
+
+
 def test_softalign_mode_loads_its_complete_parameter_set():
     references = load_references(2.0, "softalign")
     assert tuple(references) == constants.CHAIN_TYPES
@@ -177,9 +210,17 @@ def test_softalign_mode_loads_its_complete_parameter_set():
 def test_softalign_gap_penalties_reach_affine_alignment(monkeypatch):
     captured = {}
 
-    def fake_affine(similarity, lengths, temperature, gap_extend, gap_open):
+    def fake_affine(
+        similarity,
+        lengths,
+        temperature,
+        gap_extend,
+        gap_open,
+        free_gap_boundary,
+    ):
         captured["gap_extend"] = gap_extend
         captured["gap_open"] = gap_open
+        captured["free_gap_boundary"] = free_gap_boundary
         return np.asarray([0.0]), np.zeros(np.asarray(similarity).shape)
 
     monkeypatch.setattr("sabr.alignment._AFFINE_ALIGNMENT", fake_affine)
@@ -191,6 +232,7 @@ def test_softalign_gap_penalties_reach_affine_alignment(monkeypatch):
     assert captured == {
         "gap_extend": pytest.approx(0.1942468136548996),
         "gap_open": pytest.approx(-2.5441808700561523),
+        "free_gap_boundary": -1,
     }
 
 
@@ -271,11 +313,15 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
             [1, 129] if domain_count == 2 else [1],
         )
 
-    def fake_align(query, reference, mode):
+    seen_boundaries = {}
+
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
         reduced = np.zeros((len(query), len(reference)))
         np.fill_diagonal(reduced, 1)
         marker = int(reference[0, 0])
-        score = 10.0 if representations[marker] == "H:K" else 1.0
+        representation = representations[marker]
+        seen_boundaries[representation] = free_gap_boundary
+        score = 10.0 if representation == "H:K" else 1.0
         return reduced, np.zeros((len(query), len(reference) + 2)), score
 
     corrected_shapes = []
@@ -298,6 +344,15 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     assert score == 10.0
     assert alignment.shape == (2, 256)
     assert corrected_shapes == [(2, 128), (2, 128)]
+    assert seen_boundaries == {
+        "H": -1,
+        "K": -1,
+        "L": -1,
+        "H:K": 1,
+        "H:L": 1,
+        "K:H": 1,
+        "L:H": 1,
+    }
 
 
 def test_terminal_gap_penalty_uses_normal_affine_gap_costs():
@@ -322,7 +377,7 @@ def test_scfv_terminal_penalty_is_used_only_for_candidate_selection(
         "H:K": (np.ones((4, 64)), [1, 2, 129, 130]),
     }
 
-    def fake_align(query, reference, mode):
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
         if len(reference) == 1:
             return np.ones((1, 1)), np.zeros((1, 3)), 8.0
         return (
