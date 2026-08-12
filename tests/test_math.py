@@ -411,6 +411,19 @@ def test_huge_internal_run_is_valid_inside_one_cdr():
     _validate_alignment(alignment, "K")
 
 
+@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
+def test_de_loop_insertions_are_valid_for_every_chain_type(chain_type):
+    alignment = np.zeros((8, 128), dtype=int)
+    alignment[0, 78] = 1
+    alignment[1, 79] = 1
+    alignment[2, 80] = 1
+    alignment[3, 81] = 1
+    alignment[5, 82] = 1
+    alignment[6, 83] = 1
+    alignment[7, 84] = 1
+    _validate_alignment(alignment, chain_type)
+
+
 @pytest.mark.parametrize(
     ("alignment", "message"),
     [
