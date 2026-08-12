@@ -10,7 +10,7 @@ from sabr.corrections import (
     correct_de_loop,
     de_loop_positions,
 )
-from sabr.numbering import alignment_to_states
+from sabr.numbering import alignment_to_states, number_alignment
 
 
 @pytest.mark.parametrize(
@@ -95,54 +95,84 @@ def test_gap_outside_corrected_regions_emits_no_warning():
     ("residue_count", "expected"),
     [
         (0, []),
-        (1, [82]),
-        (2, [81, 82]),
-        (4, [81, 82, 82, 82]),
+        (1, [80]),
+        (2, [80, 84]),
+        (3, [80, 83, 84]),
+        (4, [80, 82, 83, 84]),
+        (5, [80, 81, 82, 83, 84]),
+        (6, [80, 81, 82, 82, 83, 84]),
     ],
 )
-def test_de_loop_positions_follow_sabdab_consensus(residue_count, expected):
+def test_de_loop_positions_follow_imgt_79_85_convention(
+    residue_count, expected
+):
     assert de_loop_positions(residue_count) == expected
 
 
-@pytest.mark.parametrize("residue_count", (0, 1, 2, 4))
-def test_de_loop_is_rebuilt_between_80_and_83(residue_count):
+@pytest.mark.parametrize(
+    ("expected_columns", "expected_82_states"),
+    [
+        ([], [(82, "d")]),
+        ([79], [(82, "d")]),
+        ([79, 83], [(82, "d")]),
+        ([79, 82, 83], [(82, "d")]),
+        ([79, 81, 82, 83], [(82, "m")]),
+        ([79, 80, 81, 82, 83], [(82, "m")]),
+        ([79, 80, 81, None, 82, 83], [(82, "m"), (82, "i")]),
+    ],
+)
+def test_de_loop_is_rebuilt_between_79_and_85(
+    expected_columns, expected_82_states
+):
+    residue_count = len(expected_columns)
     alignment = np.zeros((residue_count + 2, 128), dtype=int)
-    alignment[0, 79] = 1
-    alignment[-1, 82] = 1
+    alignment[0, 78] = 1
+    alignment[-1, 84] = 1
     for row in range(1, residue_count + 1):
-        alignment[row, 79] = 1
+        alignment[row, 78] = 1
 
     corrected = correct_de_loop(alignment)
     expected = np.zeros_like(alignment)
-    expected[0, 79] = 1
-    expected[-1, 82] = 1
-    if residue_count == 1:
-        expected[1, 81] = 1
-    elif residue_count >= 2:
-        expected[1, 80] = 1
-        expected[2, 81] = 1
+    expected[0, 78] = 1
+    expected[-1, 84] = 1
+    for row, column in enumerate(expected_columns, start=1):
+        if column is not None:
+            expected[row, column] = 1
     np.testing.assert_array_equal(corrected, expected)
 
     states, _, _ = alignment_to_states(corrected)
-    expected_82_states = (
-        [(82, "d")]
-        if residue_count == 0
-        else [(82, "m"), *((82, "i"),) * max(0, residue_count - 2)]
-    )
     assert [state for state, _ in states if state[0] == 82] == (
         expected_82_states
     )
 
 
+def test_six_residue_de_loop_numbers_the_insertion_as_82a():
+    alignment = np.zeros((8, 128), dtype=int)
+    alignment[0, 78] = 1
+    alignment[-1, 84] = 1
+    alignment[1:7, 78] = 1
+
+    records = number_alignment(correct_de_loop(alignment), "A" * 8, "imgt", "H")
+
+    assert [(number, code.strip()) for _, number, code, _ in records] == [
+        (79, ""),
+        (80, ""),
+        (81, ""),
+        (82, ""),
+        (82, "A"),
+        (83, ""),
+        (84, ""),
+        (85, ""),
+    ]
+
+
 def test_structural_gap_skips_de_loop_correction():
-    alignment = np.zeros((4, 128), dtype=int)
-    alignment[0, 79] = 1
-    alignment[1, 80] = 1
-    alignment[2, 81] = 1
-    alignment[3, 82] = 1
+    alignment = np.zeros((7, 128), dtype=int)
+    for row, position in enumerate(range(79, 86)):
+        alignment[row, position - 1] = 1
     original = alignment.copy()
 
-    with pytest.warns(UserWarning, match=r"Skipping DE loop \(80-83\)"):
+    with pytest.warns(UserWarning, match=r"Skipping DE loop \(79-85\)"):
         corrected = correct_de_loop(alignment, gap_indices=frozenset({1}))
     np.testing.assert_array_equal(corrected, original)
 

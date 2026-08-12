@@ -144,45 +144,46 @@ def correct_cdr_loop(
 
 
 def de_loop_positions(n_residues: int) -> list[int]:
-    """Return IMGT positions for residues between anchors 80 and 83.
+    """Return IMGT positions for residues between anchors 79 and 85.
 
-    The SAbDab consensus skips 81 for a one-residue loop, uses 81 and 82
-    for a two-residue loop, and places any additional insertions on 82.
+    Position 80 is filled first, followed by positions 84 through 81 from
+    right to left. Once positions 80 through 84 are occupied, additional
+    residues become insertions on position 82.
     """
-    if n_residues == 0:
+    if n_residues <= 0:
         return []
-    if n_residues == 1:
-        return [82]
-    return [81, 82] + [82] * (n_residues - 2)
+    if n_residues <= 5:
+        return [80, *range(86 - n_residues, 85)]
+    return [80, 81, 82, *([82] * (n_residues - 5)), 83, 84]
 
 
 def correct_de_loop(
     aln: np.ndarray,
     gap_indices: frozenset[int] | None = None,
 ) -> np.ndarray:
-    """Assign the residues between IMGT 80 and 83 by loop length."""
-    anchor_80_row = _aligned_row_near(aln, 79)
-    anchor_83_row = _aligned_row_near(aln, 82)
+    """Assign the residues between IMGT 79 and 85 by loop length."""
+    anchor_79_row = _aligned_row_near(aln, 78)
+    anchor_85_row = _aligned_row_near(aln, 84)
 
-    if anchor_80_row is None or anchor_83_row is None:
+    if anchor_79_row is None or anchor_85_row is None:
         LOGGER.warning(
-            "Skipping DE loop correction; missing anchor near IMGT 80 or 83."
+            "Skipping DE loop correction; missing anchor near IMGT 79 or 85."
         )
         return aln
-    if anchor_80_row >= anchor_83_row:
+    if anchor_79_row >= anchor_85_row:
         LOGGER.warning(
-            "Skipping DE loop correction; anchor 80 row (%d) is not before "
-            "anchor 83 row (%d).",
-            anchor_80_row,
-            anchor_83_row,
+            "Skipping DE loop correction; anchor 79 row (%d) is not before "
+            "anchor 85 row (%d).",
+            anchor_79_row,
+            anchor_85_row,
         )
         return aln
     if _skip_for_structural_gap(
-        gap_indices, anchor_80_row, anchor_83_row, "DE loop (80-83)"
+        gap_indices, anchor_79_row, anchor_85_row, "DE loop (79-85)"
     ):
         return aln
 
-    intermediate_rows = list(range(anchor_80_row + 1, anchor_83_row))
+    intermediate_rows = list(range(anchor_79_row + 1, anchor_85_row))
     positions = de_loop_positions(len(intermediate_rows))
 
     # Clear the learned assignments for this region before rebuilding it.

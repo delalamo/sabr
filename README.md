@@ -131,8 +131,8 @@ the CLI with mmCIF output.
   In `softalign` mode, they are `0.1942468136548996` and
   `-2.5441808700561523`, respectively, as stored in the repository asset.
 - Deterministic CDR gap distribution and DE-loop correction are always
-  applied. DE-loop residues between IMGT 80 and 83 are assigned from their
-  count, with additional insertions placed on 82.
+  applied. Between IMGT anchors 79 and 85, DE-loop residues fill 80 first,
+  then 84 back through 81; additional residues are inserted after 82.
 - No deterministic C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.

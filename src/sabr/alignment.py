@@ -232,7 +232,7 @@ def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
             "use residue_range to select the antibody domain."
         )
 
-    regions = [*constants.IMGT_LOOPS.values(), (79, 84)]
+    regions = [*constants.IMGT_LOOPS.values(), (79, 85)]
     for index, (left_row, right_row) in enumerate(zip(rows, rows[1:])):
         if right_row == left_row + 1:
             continue

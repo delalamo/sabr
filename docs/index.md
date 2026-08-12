@@ -158,9 +158,10 @@ are required.
 ## Structural gaps and modified residues
 
 A C–N distance above 2.66 Å is treated as a structural gap. If a gap crosses a
-CDR or the DE loop between IMGT 80 and 83, SAbR warns and retains the learned
-alignment for that region while continuing corrections elsewhere. Otherwise,
-DE-loop residues are assigned by count, with additional insertions on 82.
+CDR or the DE loop between IMGT anchors 79 and 85, SAbR warns and retains the
+learned alignment for that region while continuing corrections elsewhere.
+Otherwise, DE-loop residues fill 80 first, then 84 back through 81; additional
+residues are inserted after 82.
 
 Supported modified peptide residues are translated to their canonical parent
 only for sequence generation. Original residue names and atoms are preserved.
