@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reference alignment using the validated affine Smith-Waterman method."""
 
 import functools
@@ -218,11 +217,6 @@ def _alignment_path(alignment: np.ndarray) -> np.ndarray:
     return path
 
 
-def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
-    """Reject ambiguous paths before they are converted to numbering states."""
-    _alignment_path(alignment)
-
-
 def _validate_scfv_alignment(
     alignment: np.ndarray, representation: str
 ) -> None:
@@ -234,7 +228,6 @@ def _validate_scfv_alignment(
         )
     _alignment_path(alignment)
 
-    domain_rows = []
     for domain_index, chain_type in enumerate(representation.split(":")):
         start = domain_index * constants.IMGT_MAX_POSITION
         end = start + constants.IMGT_MAX_POSITION
@@ -244,14 +237,6 @@ def _validate_scfv_alignment(
             raise ValueError(
                 f"scFv {chain_type} domain contains no assigned residues."
             )
-        domain_rows.append((int(assigned_rows[0]), int(assigned_rows[-1])))
-        if domain_index == 0:
-            _validate_alignment(domain[: assigned_rows[-1] + 1], chain_type)
-        else:
-            _validate_alignment(domain[assigned_rows[0] :], chain_type)
-
-    if domain_rows[0][1] >= domain_rows[1][0]:
-        raise ValueError("scFv domain assignments overlap or are out of order.")
 
 
 def _align_reference(
@@ -382,5 +367,5 @@ def align(
         _validate_scfv_alignment(corrected, selected_type)
     else:
         corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
-        _validate_alignment(corrected, selected_type)
+        _alignment_path(corrected)
     return corrected, selected_type, score

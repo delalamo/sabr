@@ -9,8 +9,8 @@ from sabr import constants
 from sabr.alignment import (
     _affine_gap_penalty,
     _align_reference,
+    _alignment_path,
     _terminal_gap_penalty,
-    _validate_alignment,
     _validate_scfv_alignment,
     align,
     load_gap_penalties,
@@ -353,7 +353,7 @@ def test_huge_internal_run_is_valid_inside_one_cdr():
     alignment = np.zeros((102, 128), dtype=int)
     alignment[0, 26] = 1
     alignment[101, 37] = 1
-    _validate_alignment(alignment, "K")
+    _alignment_path(alignment)
 
 
 @pytest.mark.parametrize(
@@ -368,14 +368,14 @@ def test_huge_internal_run_is_valid_inside_one_cdr():
 )
 def test_malformed_alignments_are_rejected(alignment, message):
     with pytest.raises(ValueError, match=message):
-        _validate_alignment(alignment, "H")
+        _alignment_path(alignment)
 
 
 def test_internal_framework_run_is_allowed():
     alignment = np.zeros((4, 128), dtype=int)
     alignment[0, 19] = 1
     alignment[3, 20] = 1
-    _validate_alignment(alignment, "H")
+    _alignment_path(alignment)
     states, _, _ = alignment_to_states(alignment)
     assert [state for state, _ in states] == [
         (20, "m"),
@@ -389,12 +389,12 @@ def test_leading_and_trailing_alignment_boundaries_are_allowed():
     for first_row in (2, 3, 4):
         leading = np.zeros((first_row + 1, 128), dtype=int)
         leading[first_row, 2] = 1
-        _validate_alignment(leading, "H")
+        _alignment_path(leading)
 
     for last_position in (123, 124, 125):
         trailing = np.zeros((3, 128), dtype=int)
         trailing[0, last_position - 1] = 1
-        _validate_alignment(trailing, "H")
+        _alignment_path(trailing)
 
 
 def test_non_finite_reference_score_is_rejected(monkeypatch):
