@@ -1,0 +1,79 @@
+name: Build and Publish Docker Image on Release
+
+on:
+  release:
+    types: [published] # Trigger when a GitHub Release is published
+  push:
+    tags:
+      - "v*" # Or whenever a tag starting with v is pushed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Container tag to use when running manually (leave blank to auto-generate)"
+        required: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Compute lowercase image name and version tag
+        id: vars
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          IMAGE_NAME="ghcr.io/${REPO,,}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -n "$DISPATCH_VERSION" ]; then
+              CLEAN_TAG="$DISPATCH_VERSION"
+            else
+              CLEAN_TAG="manual-${GITHUB_RUN_ID}"
+            fi
+          else
+            VERSION_TAG="${GITHUB_REF_NAME}"        # e.g. v0.1.4
+            CLEAN_TAG="${VERSION_TAG#v}"            # strip leading 'v' if present
+          fi
+          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "version_tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.vars.outputs.image_name }}
+          tags: |
+            type=raw,value=${{ steps.vars.outputs.version_tag }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Test sabr-kit inside container
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            ${{ steps.vars.outputs.image_name }}:${{ steps.vars.outputs.version_tag }} \
+            -c "import sabr; print('✅ Import OK')"
