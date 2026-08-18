@@ -8,8 +8,8 @@ on:
       - "v*" # Or whenever a tag starting with v is pushed
   workflow_dispatch:
     inputs:
-      version:
-        description: "Container tag to use when running manually (leave blank to auto-generate)"
+      tag:
+        description: "Git tag to build (leave blank to use the latest v* tag)"
         required: false
 
 jobs:
@@ -20,32 +20,64 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout container definition
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Compute lowercase image name and version tag
+      - name: Resolve source tag and image name
         id: vars
         env:
           EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+          REQUESTED_TAG: ${{ inputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          IMAGE_NAME="ghcr.io/${REPO,,}"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [ -n "$DISPATCH_VERSION" ]; then
-              CLEAN_TAG="$DISPATCH_VERSION"
-            else
-              CLEAN_TAG="manual-${GITHUB_RUN_ID}"
-            fi
-          else
-            VERSION_TAG="${GITHUB_REF_NAME}"        # e.g. v0.1.4
-            CLEAN_TAG="${VERSION_TAG#v}"            # strip leading 'v' if present
+          case "$EVENT_NAME" in
+            release)
+              SOURCE_TAG="$RELEASE_TAG"
+              ;;
+            push)
+              SOURCE_TAG="$PUSH_TAG"
+              ;;
+            workflow_dispatch)
+              SOURCE_TAG="$REQUESTED_TAG"
+              if [ -z "$SOURCE_TAG" ]; then
+                SOURCE_TAG="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
+              fi
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$SOURCE_TAG" != v* ]]; then
+            echo "Expected a v* Git tag, got: $SOURCE_TAG" >&2
+            exit 1
           fi
-          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "version_tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
+          if ! git rev-parse --verify "refs/tags/${SOURCE_TAG}^{commit}" >/dev/null; then
+            echo "Git tag does not exist: $SOURCE_TAG" >&2
+            exit 1
+          fi
+
+          IMAGE_NAME="ghcr.io/${REPO,,}"
+          VERSION_TAG="${SOURCE_TAG#v}"
+          echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tagged source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.vars.outputs.source_tag }}
+          path: release-source
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -68,12 +100,20 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            SOURCE_DIR=release-source
+            SABR_VERSION=${{ steps.vars.outputs.version_tag }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Test sabr-kit inside container
+        env:
+          EXPECTED_VERSION: ${{ steps.vars.outputs.version_tag }}
+          IMAGE: ${{ steps.vars.outputs.image_name }}:${{ steps.vars.outputs.version_tag }}
         run: |
-          docker run --rm \
-            --entrypoint python \
-            ${{ steps.vars.outputs.image_name }}:${{ steps.vars.outputs.version_tag }} \
-            -c "import sabr; print('✅ Import OK')"
+          docker pull "$IMAGE"
+          docker run --rm --entrypoint python --env EXPECTED_VERSION "$IMAGE" \
+            -c 'import importlib.metadata as m, os, sabr; assert m.version("sabr-kit") == os.environ["EXPECTED_VERSION"]'
+          docker run --rm "$IMAGE" --help
