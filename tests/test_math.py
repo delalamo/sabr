@@ -8,16 +8,17 @@ import pytest
 from sabr import constants
 from sabr.alignment import (
     _affine_gap_penalty,
+    _affine_score,
     _align_reference,
+    _alignment_path,
     _terminal_gap_penalty,
-    _validate_alignment,
     _validate_scfv_alignment,
     align,
     load_gap_penalties,
     load_references,
 )
 from sabr.model import encode, load_parameters
-from sabr.numbering import _load_missing_imgt_positions
+from sabr.numbering import _load_missing_imgt_positions, alignment_to_states
 from sabr.structure import extract_chain
 
 DATA = Path(__file__).parent / "data"
@@ -160,6 +161,38 @@ def test_scfv_alignment_allows_an_unassigned_linker_between_domains():
     _validate_scfv_alignment(alignment, "H:K")
 
 
+@pytest.mark.parametrize("linker_length", (1, 3))
+def test_scfv_reference_boundary_has_no_affine_linker_penalty(linker_length):
+    query_length = linker_length + 2
+    similarities = np.full((query_length, 4), -100.0, dtype=np.float32)
+    similarities[:, (0, 3)] = 0.0
+    similarities[0, 1] = 10.0
+    similarities[-1, 2] = 10.0
+    lengths = np.asarray((query_length, similarities.shape[1]))
+    gap_extend = -1.0
+    gap_open = -3.0
+
+    penalized = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend,
+        gap_open,
+    )
+    free = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend,
+        gap_open,
+        free_gap_boundary=1,
+    )
+
+    expected_penalty = gap_open + (linker_length - 1) * gap_extend
+    assert float(penalized) == pytest.approx(20.0 + expected_penalty)
+    assert float(free) == pytest.approx(20.0)
+
+
 def test_softalign_mode_loads_its_complete_parameter_set():
     references = load_references(2.0, "softalign")
     assert tuple(references) == constants.CHAIN_TYPES
@@ -178,9 +211,17 @@ def test_softalign_mode_loads_its_complete_parameter_set():
 def test_softalign_gap_penalties_reach_affine_alignment(monkeypatch):
     captured = {}
 
-    def fake_affine(similarity, lengths, temperature, gap_extend, gap_open):
+    def fake_affine(
+        similarity,
+        lengths,
+        temperature,
+        gap_extend,
+        gap_open,
+        free_gap_boundary,
+    ):
         captured["gap_extend"] = gap_extend
         captured["gap_open"] = gap_open
+        captured["free_gap_boundary"] = free_gap_boundary
         return np.asarray([0.0]), np.zeros(np.asarray(similarity).shape)
 
     monkeypatch.setattr("sabr.alignment._AFFINE_ALIGNMENT", fake_affine)
@@ -192,6 +233,7 @@ def test_softalign_gap_penalties_reach_affine_alignment(monkeypatch):
     assert captured == {
         "gap_extend": pytest.approx(0.1942468136548996),
         "gap_open": pytest.approx(-2.5441808700561523),
+        "free_gap_boundary": -1,
     }
 
 
@@ -272,11 +314,15 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
             [1, 129] if domain_count == 2 else [1],
         )
 
-    def fake_align(query, reference, mode):
+    seen_boundaries = {}
+
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
         reduced = np.zeros((len(query), len(reference)))
         np.fill_diagonal(reduced, 1)
         marker = int(reference[0, 0])
-        score = 10.0 if representations[marker] == "H:K" else 1.0
+        representation = representations[marker]
+        seen_boundaries[representation] = free_gap_boundary
+        score = 10.0 if representation == "H:K" else 1.0
         return reduced, np.zeros((len(query), len(reference) + 2)), score
 
     corrected_shapes = []
@@ -299,6 +345,15 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     assert score == 10.0
     assert alignment.shape == (2, 256)
     assert corrected_shapes == [(2, 128), (2, 128)]
+    assert seen_boundaries == {
+        "H": -1,
+        "K": -1,
+        "L": -1,
+        "H:K": 1,
+        "H:L": 1,
+        "K:H": 1,
+        "L:H": 1,
+    }
 
 
 def test_terminal_gap_penalty_uses_normal_affine_gap_costs():
@@ -323,7 +378,7 @@ def test_scfv_terminal_penalty_is_used_only_for_candidate_selection(
         "H:K": (np.ones((4, 64)), [1, 2, 129, 130]),
     }
 
-    def fake_align(query, reference, mode):
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
         if len(reference) == 1:
             return np.ones((1, 1)), np.zeros((1, 3)), 8.0
         return (
@@ -354,7 +409,20 @@ def test_huge_internal_run_is_valid_inside_one_cdr():
     alignment = np.zeros((102, 128), dtype=int)
     alignment[0, 26] = 1
     alignment[101, 37] = 1
-    _validate_alignment(alignment, "K")
+    _alignment_path(alignment)
+
+
+@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
+def test_de_loop_insertions_are_valid_for_every_chain_type(chain_type):
+    alignment = np.zeros((8, 128), dtype=int)
+    alignment[0, 78] = 1
+    alignment[1, 79] = 1
+    alignment[2, 80] = 1
+    alignment[3, 81] = 1
+    alignment[5, 82] = 1
+    alignment[6, 83] = 1
+    alignment[7, 84] = 1
+    _alignment_path(alignment)
 
 
 @pytest.mark.parametrize(
@@ -369,36 +437,33 @@ def test_huge_internal_run_is_valid_inside_one_cdr():
 )
 def test_malformed_alignments_are_rejected(alignment, message):
     with pytest.raises(ValueError, match=message):
-        _validate_alignment(alignment, "H")
+        _alignment_path(alignment)
 
 
-def test_internal_framework_run_is_rejected():
+def test_internal_framework_run_is_allowed():
     alignment = np.zeros((4, 128), dtype=int)
     alignment[0, 19] = 1
     alignment[3, 20] = 1
-    with pytest.raises(ValueError, match="residue_range"):
-        _validate_alignment(alignment, "H")
+    _alignment_path(alignment)
+    states, _, _ = alignment_to_states(alignment)
+    assert [state for state, _ in states] == [
+        (20, "m"),
+        (20, "i"),
+        (20, "i"),
+        (21, "m"),
+    ]
 
 
-def test_leading_and_trailing_alignment_boundaries():
-    valid_leading = np.zeros((4, 128), dtype=int)
-    valid_leading[2, 2] = 1
-    valid_leading[3, 3] = 1
-    _validate_alignment(valid_leading, "H")
+def test_leading_and_trailing_alignment_boundaries_are_allowed():
+    for first_row in (2, 3, 4):
+        leading = np.zeros((first_row + 1, 128), dtype=int)
+        leading[first_row, 2] = 1
+        _alignment_path(leading)
 
-    invalid_leading = np.zeros((4, 128), dtype=int)
-    invalid_leading[3, 2] = 1
-    with pytest.raises(ValueError, match="non-positive"):
-        _validate_alignment(invalid_leading, "H")
-
-    valid_trailing = np.zeros((3, 128), dtype=int)
-    valid_trailing[0, 124] = 1
-    _validate_alignment(valid_trailing, "H")
-
-    invalid_trailing = np.zeros((3, 128), dtype=int)
-    invalid_trailing[0, 123] = 1
-    with pytest.raises(ValueError, match="trailing"):
-        _validate_alignment(invalid_trailing, "H")
+    for last_position in (123, 124, 125):
+        trailing = np.zeros((3, 128), dtype=int)
+        trailing[0, last_position - 1] = 1
+        _alignment_path(trailing)
 
 
 def test_non_finite_reference_score_is_rejected(monkeypatch):

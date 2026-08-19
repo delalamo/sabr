@@ -130,18 +130,22 @@ the CLI with mmCIF output.
 - In `sabr` mode, gap extension is `-0.175027` and gap opening is `-2.525591`.
   In `softalign` mode, they are `0.1942468136548996` and
   `-2.5441808700561523`, respectively, as stored in the repository asset.
-- CDR gap distribution is always applied.
-- No deterministic light-chain DE-loop or C-terminal correction is applied.
+- Deterministic CDR gap distribution and DE-loop correction are always
+  applied. Between IMGT anchors 79 and 85, DE-loop residues fill 80 first,
+  then 84 back through 81; additional residues are inserted after 82.
+- No deterministic C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
+- Composite candidates do not apply gap-open or gap-extension costs to query
+  linker residues aligned at the boundary between their two references.
 - Composite candidates receive normal affine gap-open and gap-extension costs
   for unaligned query and reference termini when their selection scores are
   compared; the underlying alignments and raw alignment scores are unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
-residues exceeds 2.66 Å. A gap skips only the affected CDR correction and
-emits a warning; other regions continue normally.
+residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop
+correction and emits a warning; other regions continue normally.
 
 T-cell receptors are not an officially supported SAbR target. For
 experimental low-level use, align a TCR against the K reference because that
