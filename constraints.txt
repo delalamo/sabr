@@ -7,7 +7,6 @@ coverage==7.15.0
 distlib==0.4.3
 dm-haiku==0.0.16
 filelock==3.29.7
-gemmi==0.7.5
 identify==2.6.19
 iniconfig==2.3.0
 jax==0.10.2

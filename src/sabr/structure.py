@@ -1,14 +1,14 @@
-"""Type-preserving BioPython and Gemmi structure handling."""
+"""Biopython structure handling."""
 
 import copy
 import functools
 import json
 from importlib.resources import files
 
-import gemmi
 import numpy as np
+from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.Residue import DisorderedResidue
-from Bio.PDB.Structure import Structure as BioStructure
+from Bio.PDB.Structure import Structure
 
 from sabr import constants
 
@@ -56,10 +56,9 @@ def _compute_cb(n_coord: np.ndarray, ca_coord: np.ndarray, c_coord: np.ndarray):
 
 
 def _validate_structure(structure, chain: str):
-    if not isinstance(structure, (BioStructure, gemmi.Structure)):
+    if not isinstance(structure, Structure):
         raise TypeError(
-            "structure must be a Bio.PDB.Structure.Structure or "
-            "gemmi.Structure object."
+            "structure must be a Bio.PDB.Structure.Structure object."
         )
     if not isinstance(chain, str) or not chain:
         raise ValueError("chain must be a non-empty string.")
@@ -73,17 +72,9 @@ def _find_chain(structure, chain: str):
     _validate_structure(structure, chain)
     model = next(iter(structure))
     for candidate in model:
-        candidate_name = (
-            candidate.id
-            if isinstance(structure, BioStructure)
-            else candidate.name
-        )
-        if candidate_name == chain:
+        if candidate.id == chain:
             return candidate
-    names = [
-        candidate.id if isinstance(structure, BioStructure) else candidate.name
-        for candidate in model
-    ]
+    names = [candidate.id for candidate in model]
     raise ValueError(f"Chain '{chain}' not found. Available chains: {names}.")
 
 
@@ -145,7 +136,7 @@ def _select_backbone(atoms: list, label: str) -> tuple:
     return tuple(atom[3] for atom in selected)
 
 
-def _bio_residue_data(residue) -> tuple:
+def _residue_data(residue) -> tuple:
     label = f"{residue.resname} {residue.id[1]}{residue.id[2].strip()}"
     atoms = [
         (
@@ -158,20 +149,6 @@ def _bio_residue_data(residue) -> tuple:
         if atom.name in ("N", "CA", "C")
     ]
     return _select_backbone(atoms, label)
-
-
-def _gemmi_residue_data(residue) -> tuple:
-    atoms = [
-        (
-            atom.name,
-            _altloc(atom.altloc),
-            float(atom.occ if np.isfinite(atom.occ) else 0.0),
-            np.asarray((atom.pos.x, atom.pos.y, atom.pos.z), dtype=np.float64),
-        )
-        for atom in residue
-        if atom.name in ("N", "CA", "C")
-    ]
-    return _select_backbone(atoms, f"{residue.name} {residue.seqid}")
 
 
 def _detect_gaps(coords: np.ndarray) -> frozenset:
@@ -191,7 +168,6 @@ def extract_chain(
 ) -> _ChainData:
     """Normalize the selected polymer residues without modifying the input."""
     target = _find_chain(structure, chain)
-    is_biopython = isinstance(structure, BioStructure)
     coords = []
     sequence = []
     residue_ids = []
@@ -201,21 +177,15 @@ def extract_chain(
     polymer_ids = set()
 
     for index, residue in enumerate(target):
-        if is_biopython:
-            number = residue.id[1]
-            insertion_code = residue.id[2].strip()
-            residue_name = residue.resname
-            is_atom_record = not residue.id[0].strip()
-        else:
-            number = residue.seqid.num
-            insertion_code = residue.seqid.icode.strip()
-            residue_name = residue.name
-            is_atom_record = residue.het_flag == "A"
+        number = residue.id[1]
+        insertion_code = residue.id[2].strip()
+        residue_name = residue.resname
+        is_atom_record = not residue.id[0].strip()
         if residue_range is not None and not (
             residue_range[0] <= number <= residue_range[1]
         ):
             continue
-        if is_biopython and isinstance(residue, DisorderedResidue):
+        if isinstance(residue, DisorderedResidue):
             raise ValueError(
                 f"Residue {number}{insertion_code} has ambiguous "
                 "microheterogeneous residue names."
@@ -227,10 +197,7 @@ def extract_chain(
                 f"Unsupported polymer residue {residue_name} "
                 f"{number}{insertion_code}."
             )
-        if (
-            parent_name is None
-            and gemmi.find_tabulated_residue(residue_name).is_amino_acid()
-        ):
+        if parent_name is None and is_aa(residue):
             raise ValueError(
                 f"Unsupported polymer residue {residue_name} "
                 f"{number}{insertion_code}; the pinned CCD snapshot has no "
@@ -238,11 +205,7 @@ def extract_chain(
             )
         if parent_name is None:
             try:
-                backbone = (
-                    _bio_residue_data(residue)
-                    if is_biopython
-                    else _gemmi_residue_data(residue)
-                )
+                backbone = _residue_data(residue)
             except ValueError:
                 continue
             unknown_hetero.append(
@@ -257,11 +220,7 @@ def extract_chain(
                 "microheterogeneous residue names."
             )
         polymer_ids.add(residue_key)
-        backbone = (
-            _bio_residue_data(residue)
-            if is_biopython
-            else _gemmi_residue_data(residue)
-        )
+        backbone = _residue_data(residue)
         normalized.append(
             (
                 index,
@@ -382,25 +341,13 @@ def _new_residue_ids(data: _ChainData, numbered: list) -> dict:
 
 def _check_collisions(structure, chain: str, mapping: dict) -> None:
     target = _find_chain(structure, chain)
-    is_biopython = isinstance(structure, BioStructure)
     final_ids = []
     for index, residue in enumerate(target):
-        if is_biopython:
-            if index in mapping:
-                number, insertion_code = mapping[index]
-                final_id = (residue.id[0], number, insertion_code or " ")
-            else:
-                final_id = residue.id
+        if index in mapping:
+            number, insertion_code = mapping[index]
+            final_id = (residue.id[0], number, insertion_code or " ")
         else:
-            if index in mapping:
-                number, insertion_code = mapping[index]
-                final_id = (residue.het_flag, number, insertion_code or " ")
-            else:
-                final_id = (
-                    residue.het_flag,
-                    residue.seqid.num,
-                    residue.seqid.icode,
-                )
+            final_id = residue.id
         final_ids.append(final_id)
     if len(final_ids) != len(set(final_ids)):
         raise ValueError(
@@ -416,34 +363,21 @@ def apply_numbering(
     data: _ChainData,
     numbered: list,
 ):
-    """Return a same-type clone with numbering applied to selected residues."""
+    """Return a copy with numbering applied to selected residues."""
     mapping = _new_residue_ids(data, numbered)
     _check_collisions(structure, chain, mapping)
 
-    if isinstance(structure, BioStructure):
-        result = copy.deepcopy(structure)
-        target = _find_chain(result, chain)
-        residues = list(target)
-        for residue in residues:
-            residue.detach_parent()
-        for index, (number, insertion_code) in mapping.items():
-            residue = residues[index]
-            residue.id = (residue.id[0], number, insertion_code or " ")
-        target.child_list = residues
-        target.child_dict = {}
-        for residue in residues:
-            residue.set_parent(target)
-            target.child_dict[residue.id] = residue
-        return result
-
-    result = structure.clone()
+    result = copy.deepcopy(structure)
     target = _find_chain(result, chain)
+    residues = list(target)
+    for residue in residues:
+        residue.detach_parent()
     for index, (number, insertion_code) in mapping.items():
-        if len(insertion_code.strip()) > 1:
-            raise ValueError(
-                "Gemmi structures cannot represent extended insertion codes; "
-                "use a BioPython structure and mmCIF output."
-            )
-        target[index].seqid.num = number
-        target[index].seqid.icode = insertion_code.strip() or " "
+        residue = residues[index]
+        residue.id = (residue.id[0], number, insertion_code or " ")
+    target.child_list = residues
+    target.child_dict = {}
+    for residue in residues:
+        residue.set_parent(target)
+        target.child_dict[residue.id] = residue
     return result

@@ -80,10 +80,8 @@ alignments or their raw scores.
 
 ## Python API
 
-`renumber_structure` accepts either a BioPython or Gemmi `Structure`. It
-returns the same concrete type and does not mutate its input.
-
-### BioPython
+`renumber_structure` accepts a Biopython `Structure`, returns a new Biopython
+`Structure`, and does not mutate its input.
 
 ```python
 from Bio.PDB import PDBParser
@@ -95,24 +93,6 @@ numbered = renumber_structure(
     chain="H",
     scheme="imgt",
     chain_type="auto",
-)
-```
-
-### Gemmi
-
-```python
-import gemmi
-from sabr import renumber_structure
-
-structure = gemmi.read_structure("antibody.cif")
-numbered = renumber_structure(
-    structure,
-    chain="heavy_chain",
-    scheme="kabat",
-    chain_type="H",
-    noise_level=0.0,
-    mode="softalign",
-    residue_range=(1, 130),
 )
 ```
 
@@ -148,12 +128,10 @@ Use mmCIF when a structure has:
 - residue numbers outside the PDB range `-999` through `9999`; or
 - more than 99,999 atoms.
 
-Gemmi structure objects can represent only one-character insertion codes. For
-exceptionally long CDR insertions, use a BioPython structure and mmCIF output.
+For exceptionally long CDR insertions, use mmCIF output.
 
-CLI conversion preserves atomic structure content but may not preserve every
-non-atomic mmCIF category. Use the in-memory Gemmi API when those categories
-are required.
+CLI conversion preserves atomic structure content but does not preserve every
+non-atomic mmCIF category.
 
 ## Structural gaps and modified residues
 
