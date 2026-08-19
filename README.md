@@ -34,6 +34,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
+     [--no-mmcif]
      [--overwrite] [-v]
 ```
 
@@ -55,9 +56,12 @@ already specifies both domain types, scFv mode requires automatic chain type.
 Composite references use the selected parameter mode, so `--scfv` can be
 combined with `--mode softalign`.
 
-Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
-when chain names or ANARCI insertion codes exceed PDB's one-character fields.
-Writes are atomic, so a failed run does not leave a partial output.
+Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). When a
+requested PDB output needs multi-character insertion codes, SAbR warns and
+automatically writes it to the corresponding `.cif` path instead. Pass
+`--no-mmcif` to forbid this conversion and fail. Other values that exceed PDB
+field limits still require an explicitly named mmCIF output. Writes are atomic,
+so a failed run does not leave a partial output.
 
 CLI conversion guarantees preservation of atomic structure content, not
 arbitrary non-atomic mmCIF categories. It warns for every mmCIF input.

@@ -24,6 +24,15 @@ def _passthrough(captured=None, fail=False):
     return fake
 
 
+def _with_extended_insertion_code():
+    def fake(structure, chain, **kwargs):
+        residue = next(structure.get_residues())
+        residue.id = (residue.id[0], residue.id[1], "AA")
+        return structure
+
+    return fake
+
+
 def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(cli, "renumber_structure", _passthrough(captured))
@@ -153,6 +162,80 @@ def test_cli_overwrite_protection(monkeypatch, tmp_path):
     assert result.exit_code != 0
     assert "--overwrite" in result.output
     assert output.read_text() == "existing"
+
+
+def test_cli_uses_mmcif_for_extended_insertion_codes_by_default(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        cli, "renumber_structure", _with_extended_insertion_code()
+    )
+    requested = tmp_path / "numbered.pdb"
+    output = tmp_path / "numbered.cif"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(requested),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert not requested.exists()
+    assert output.exists()
+    assert "automatically saving mmCIF output" in result.output
+    assert "--no-mmcif" in result.output
+    parsed = MMCIFParser(QUIET=True).get_structure("output", output)
+    assert next(parsed.get_residues()).id[2] == "AA"
+
+
+def test_no_mmcif_rejects_extended_insertion_codes(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "renumber_structure", _with_extended_insertion_code()
+    )
+    output = tmp_path / "numbered.pdb"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(output),
+            "--no-mmcif",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "printable ASCII insertion" in result.output
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_automatic_mmcif_respects_overwrite_protection(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "renumber_structure", _with_extended_insertion_code()
+    )
+    requested = tmp_path / "numbered.pdb"
+    output = tmp_path / "numbered.cif"
+    output.write_text("existing")
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(requested),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--overwrite" in result.output
+    assert output.read_text() == "existing"
+    assert not requested.exists()
 
 
 def test_cli_failure_leaves_no_output_or_temporary_file(monkeypatch, tmp_path):
@@ -425,4 +508,5 @@ def test_help_and_version_are_available():
     assert "--noise-level" in help_result.output
     assert "--scfv" in help_result.output
     assert "--mode" in help_result.output
+    assert "--no-mmcif" in help_result.output
     assert version_result.exit_code == 0

@@ -55,6 +55,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
+     [--no-mmcif]
      [--overwrite] [-v]
 ```
 
