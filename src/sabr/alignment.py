@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reference alignment using the validated affine Smith-Waterman method."""
 
 import functools
@@ -15,16 +14,18 @@ from sabr.corrections import apply_corrections
 LOGGER = logging.getLogger(__name__)
 
 
-def _rotate_for_dp(x, NINF):
+def _rotate_for_dp(x, NINF, free_gap_boundary=-1):
     """Rotate a matrix for striped dynamic programming."""
     a, b = x.shape
     ar = jnp.arange(a)[::-1, None]
     br = jnp.arange(b)[None, :]
     i, j = (br - ar) + (a - 1), (ar + br) // 2
     n, m = (a + b - 1), (a + b) // 2
+    free_gap = jnp.broadcast_to(br == free_gap_boundary, (a, b))
     output = {
         "x": jnp.full([n, m], NINF).at[i, j].set(x),
         "o": (jnp.arange(n) + a % 2) % 2,
+        "free_gap": jnp.full([n, m], False).at[i, j].set(free_gap),
     }
     prev = (jnp.full((m, 3), NINF), jnp.full((m, 3), NINF))
     return output, prev, (i, j)
@@ -71,9 +72,10 @@ def _affine_score(
     temperature,
     gap_extend,
     gap_open,
+    free_gap_boundary=-1,
     NINF=-1e30,
 ):
-    """Return the smooth affine Smith-Waterman score for one matrix."""
+    """Return a score, optionally making one reference gap boundary free."""
     right_penalties = jnp.asarray(
         [
             gap_open,
@@ -105,7 +107,11 @@ def _affine_score(
             _pad(h1[1:], ([0, 1], [0, 0]), NINF),
         )
         right += right_penalties
-        down += down_penalties
+        down += jnp.where(
+            stripe["free_gap"][:, None],
+            0,
+            down_penalties,
+        )
         right = right[:, :2]
 
         h0 = jnp.stack(
@@ -119,7 +125,9 @@ def _affine_score(
         return (h1, h0), h0
 
     similarities, mask = _apply_length_mask(similarities, lengths, NINF)
-    stripes, previous, indices = _rotate_for_dp(similarities[:-1, :-1], NINF)
+    stripes, previous, indices = _rotate_for_dp(
+        similarities[:-1, :-1], NINF, free_gap_boundary
+    )
     scores = jax.lax.scan(step, previous, stripes, unroll=2)[-1][indices]
     return _soft_maximum(
         scores + similarities[1:, 1:, None],
@@ -130,7 +138,10 @@ def _affine_score(
 
 
 _AFFINE_ALIGNMENT = jax.jit(
-    jax.vmap(jax.value_and_grad(_affine_score), (0, 0, None, None, None))
+    jax.vmap(
+        jax.value_and_grad(_affine_score),
+        (0, 0, None, None, None, None),
+    )
 )
 
 
@@ -218,48 +229,6 @@ def _alignment_path(alignment: np.ndarray) -> np.ndarray:
     return path
 
 
-def _validate_alignment(alignment: np.ndarray, chain_type: str) -> None:
-    """Reject ambiguous paths before they are converted to numbering states."""
-    path = _alignment_path(alignment)
-    rows = path[:, 0]
-    columns = path[:, 1]
-
-    first_row = int(rows[0])
-    first_position = int(columns[0]) + 1
-    if first_row and first_position - first_row < 1:
-        raise ValueError(
-            "N-terminal residues would require non-positive numbering; "
-            "use residue_range to select the antibody domain."
-        )
-
-    regions = list(constants.IMGT_LOOPS.values())
-    if chain_type in ("K", "L"):
-        regions.append((79, 84))
-    for index, (left_row, right_row) in enumerate(zip(rows, rows[1:])):
-        if right_row == left_row + 1:
-            continue
-        left_position = int(columns[index]) + 1
-        right_position = int(columns[index + 1]) + 1
-        if not any(
-            start <= left_position <= end and start <= right_position <= end
-            for start, end in regions
-        ):
-            raise ValueError(
-                f"Unassigned query rows {left_row + 1}-{right_row - 1} "
-                f"are bracketed by IMGT {left_position} and "
-                f"{right_position}; use residue_range to select one "
-                "antibody domain."
-            )
-
-    last_row = int(rows[-1])
-    last_position = int(columns[-1]) + 1
-    if last_row < alignment.shape[0] - 1 and last_position < 125:
-        raise ValueError(
-            f"Unassigned trailing query rows follow IMGT {last_position}; "
-            "use residue_range to select the antibody domain."
-        )
-
-
 def _validate_scfv_alignment(
     alignment: np.ndarray, representation: str
 ) -> None:
@@ -271,7 +240,6 @@ def _validate_scfv_alignment(
         )
     _alignment_path(alignment)
 
-    domain_rows = []
     for domain_index, chain_type in enumerate(representation.split(":")):
         start = domain_index * constants.IMGT_MAX_POSITION
         end = start + constants.IMGT_MAX_POSITION
@@ -281,21 +249,15 @@ def _validate_scfv_alignment(
             raise ValueError(
                 f"scFv {chain_type} domain contains no assigned residues."
             )
-        domain_rows.append((int(assigned_rows[0]), int(assigned_rows[-1])))
-        if domain_index == 0:
-            _validate_alignment(domain[: assigned_rows[-1] + 1], chain_type)
-        else:
-            _validate_alignment(domain[assigned_rows[0] :], chain_type)
-
-    if domain_rows[0][1] >= domain_rows[1][0]:
-        raise ValueError("scFv domain assignments overlap or are out of order.")
 
 
 def _align_reference(
     query: np.ndarray,
     reference: np.ndarray,
     mode: str = "sabr",
+    free_gap_boundary: int = -1,
 ):
+    """Align one reference, optionally allowing a free query insertion."""
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
     query_batch = jnp.asarray(query[None, :])
@@ -309,6 +271,7 @@ def _align_reference(
         constants.DEFAULT_TEMPERATURE,
         gap_extend,
         gap_open,
+        free_gap_boundary,
     )
     return (
         np.asarray(soft_alignment[0])[:, 1:-1],
@@ -367,7 +330,21 @@ def align(
     best = None
     for candidate in candidates:
         reference, positions = references[candidate]
-        reduced, similarity, score = _align_reference(query, reference, mode)
+        if ":" in candidate:
+            free_gap_boundary = sum(
+                position <= constants.IMGT_MAX_POSITION
+                for position in positions
+            )
+            reduced, similarity, score = _align_reference(
+                query,
+                reference,
+                mode,
+                free_gap_boundary=free_gap_boundary,
+            )
+        else:
+            reduced, similarity, score = _align_reference(
+                query, reference, mode
+            )
         if (
             not np.isfinite(score)
             or not np.isfinite(reduced).all()
@@ -419,5 +396,5 @@ def align(
         _validate_scfv_alignment(corrected, selected_type)
     else:
         corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
-        _validate_alignment(corrected, selected_type)
+        _alignment_path(corrected)
     return corrected, selected_type, score

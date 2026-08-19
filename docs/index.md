@@ -72,6 +72,9 @@ scFv mode requires the default automatic chain type because each composite
 reference already specifies both domain types.
 Composite references use the selected parameter mode, so `--scfv` can be
 combined with `--mode softalign`.
+Gap-open and gap-extension penalties are disabled for query linker residues
+aligned at the boundary between the two references. All other internal gap
+transitions retain the selected parameter mode's normal penalties.
 
 When candidates are compared, SAbR applies the normal affine gap-open and
 gap-extension costs to unaligned query and reference termini of composite
@@ -136,8 +139,10 @@ non-atomic mmCIF category.
 ## Structural gaps and modified residues
 
 A C–N distance above 2.66 Å is treated as a structural gap. If a gap crosses a
-CDR, SAbR warns and retains the learned alignment for that region while
-continuing corrections elsewhere.
+CDR or the DE loop between IMGT anchors 79 and 85, SAbR warns and retains the
+learned alignment for that region while continuing corrections elsewhere.
+Otherwise, DE-loop residues fill 80 first, then 84 back through 81; additional
+residues are inserted after 82.
 
 Supported modified peptide residues are translated to their canonical parent
 only for sequence generation. Original residue names and atoms are preserved.

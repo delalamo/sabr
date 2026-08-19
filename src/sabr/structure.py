@@ -311,11 +311,6 @@ def _new_residue_ids(data: _ChainData, numbered: list) -> dict:
     mapping = {}
     first_row, first_number = numbered[0][:2]
     first_assigned_number = first_number - first_row
-    if first_assigned_number < 1:
-        raise ValueError(
-            "N-terminal residues would require non-positive numbering; "
-            "use residue_range to select the antibody domain."
-        )
     for query_index in range(first_row):
         mapping[data.residue_indices[query_index]] = (
             first_assigned_number + query_index,

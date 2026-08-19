@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Constants and configuration values for SAbR.
 
 This module defines constants used throughout the SAbR package including:
@@ -24,12 +23,6 @@ PEPTIDE_BOND_LENGTH = 1.33
 # Cutoff for gap detection
 PEPTIDE_BOND_MAX_DISTANCE = 2 * PEPTIDE_BOND_LENGTH
 MAX_SELECTED_RESIDUES = 1024
-
-# Backbone indices for MPNN
-BACKBONE_N_IDX = 0
-BACKBONE_CA_IDX = 1
-BACKBONE_C_IDX = 2
-BACKBONE_CB_IDX = 3
 
 # Gap scores (from NPZ)
 SW_GAP_EXTEND = -0.175027

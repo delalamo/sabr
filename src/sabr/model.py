@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """MPNN (Message Passing Neural Network) encoder for protein structures.
 
 This module provides the ENC class which encodes protein backbone structures
@@ -130,20 +129,15 @@ class ProteinFeatures(hk.Module):
     def __init__(
         self,
         edge_features: int,
-        node_features: int,
         num_positional_embeddings: int = 16,
         num_rbf: int = 16,
         top_k: int = 30,
         augment_eps: float = 0.0,
-        num_chain_embeddings: int = 16,
     ):
         super(ProteinFeatures, self).__init__()
-        self.edge_features = edge_features
-        self.node_features = node_features
         self.top_k = top_k
         self.augment_eps = augment_eps
         self.num_rbf = num_rbf
-        self.num_positional_embeddings = num_positional_embeddings
 
         self.embeddings = PositionalEncodings(num_positional_embeddings)
         # edge_in = num_positional_embeddings + num_rbf * 25 (for reference)
@@ -270,7 +264,7 @@ class PositionWiseFeedForward(hk.Module):
         self.act = Gelu
 
     def __call__(self, h_V):
-        h = self.act(self.W_in(h_V), approximate=False)
+        h = self.act(self.W_in(h_V))
         h = self.W_out(h)
         return h
 
@@ -294,18 +288,13 @@ class EncLayer(hk.Module):
     def __init__(
         self,
         num_hidden: int,
-        num_in: int,
         dropout: float = 0.1,
-        num_heads: int = None,
         scale: int = 30,
         name: str = None,
     ):
         super(EncLayer, self).__init__()
         self.num_hidden = num_hidden
-        self.num_in = num_in
         self.scale = scale
-
-        self.safe_key = SafeKey(hk.next_rng_key())
 
         self.dropout1 = DropoutCust(dropout)
         self.dropout2 = DropoutCust(dropout)
@@ -387,7 +376,6 @@ class ENC:
 
     def __init__(
         self,
-        node_features: int,
         edge_features: int,
         hidden_dim: int,
         num_encoder_layers: int = 1,
@@ -398,7 +386,6 @@ class ENC:
         """Initialize the MPNN encoder.
 
         Args:
-            node_features: Dimension of node features.
             edge_features: Dimension of edge features.
             hidden_dim: Hidden dimension for layers.
             num_encoder_layers: Number of encoder layers.
@@ -407,12 +394,8 @@ class ENC:
             dropout: Dropout rate.
         """
         super(ENC, self).__init__()
-        self.node_features = node_features
-        self.edge_features = edge_features
-        self.hidden_dim = hidden_dim
 
         self.features = ProteinFeatures(
-            node_features,
             edge_features,
             top_k=k_neighbors,
             augment_eps=augment_eps,
@@ -420,9 +403,7 @@ class ENC:
 
         self.W_e = hk.Linear(hidden_dim, with_bias=True, name="W_e")
         self.encoder_layers = [
-            EncLayer(
-                hidden_dim, hidden_dim * 2, dropout=dropout, name="enc" + str(i)
-            )
+            EncLayer(hidden_dim, dropout=dropout, name="enc" + str(i))
             for i in range(num_encoder_layers)
         ]
 
@@ -481,7 +462,6 @@ def load_parameters(mode: str = "sabr") -> dict:
 
 def _encode(coords, mask, chain_ids, residue_indices):
     encoder = ENC(
-        constants.EMBED_DIM,
         constants.EMBED_DIM,
         constants.EMBED_DIM,
         constants.N_MPNN_LAYERS,
