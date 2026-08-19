@@ -8,12 +8,6 @@ on:
 permissions:
   contents: read
 
-# CI validates source builds rather than release version inference. A CI-only
-# pretend version also keeps PR merge refs installable when the nearest tag is
-# a numbered development release such as v0.4.3.dev1.
-env:
-  SETUPTOOLS_SCM_PRETEND_VERSION: "0.0.0.dev${{ github.run_number }}"
-
 jobs:
   lint:
     runs-on: ubuntu-latest
