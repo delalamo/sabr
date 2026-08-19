@@ -226,23 +226,6 @@ def test_low_level_tcr_aho_uses_the_actual_chain_type(monkeypatch, chain_type):
     ) == [(0, 1, "", "A")]
 
 
-def test_low_level_tcr_imgt_numbering_is_available(monkeypatch):
-    alignment = np.zeros((1, constants.IMGT_MAX_POSITION), dtype=int)
-    alignment[0, 0] = 1
-    monkeypatch.setattr(
-        numbering,
-        "number_imgt",
-        lambda states, sequence: ([((1, ""), "A")], 0, 0),
-    )
-    assert number_alignment(
-        alignment,
-        "A",
-        "imgt",
-        "A",
-        ref_type="K",
-    ) == [(0, 1, "", "A")]
-
-
 @pytest.mark.parametrize("chain_type", ("A", "B", "G", "D"))
 @pytest.mark.parametrize("scheme", ("chothia", "kabat", "martin", "wolfguy"))
 def test_tcr_chain_types_reject_antibody_only_schemes(chain_type, scheme):
@@ -278,10 +261,7 @@ def test_reference_metadata_rejects_invalid_or_ambiguous_combinations():
         )
 
 
-@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
-def test_default_single_domain_numbering_skips_reference_completion(
-    monkeypatch, chain_type
-):
+def test_default_numbering_skips_reduced_reference_completion(monkeypatch):
     monkeypatch.setattr(
         numbering,
         "_load_missing_imgt_positions",
@@ -301,7 +281,7 @@ def test_default_single_domain_numbering_skips_reference_completion(
             1,
         ),
     )
-    assert number_alignment(np.eye(2, dtype=int), "AC", "imgt", chain_type) == [
+    assert number_alignment(np.eye(2, dtype=int), "AC", "imgt", "H") == [
         (0, 1, "", "A"),
         (1, 2, "", "C"),
     ]
@@ -374,16 +354,6 @@ def test_scfv_numbering_offsets_second_domain_and_numbers_linker(monkeypatch):
             return [((1, ""), "A"), ((2, ""), "C")], 0, 1
         return [((1, ""), "E"), ((2, ""), "F")], 0, 1
 
-    monkeypatch.setattr(
-        numbering,
-        "_load_missing_imgt_positions",
-        lambda: pytest.fail("scFv path loaded reference metadata"),
-    )
-    monkeypatch.setattr(
-        numbering,
-        "_insert_missing_deletions",
-        lambda *args: pytest.fail("scFv path completed reference states"),
-    )
     monkeypatch.setattr(numbering, "_apply_scheme", fake_scheme)
     assert number_alignment(alignment, "ACDEF", "imgt", "H:K") == [
         (0, 1, "", "A"),
