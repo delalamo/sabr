@@ -173,9 +173,8 @@ def main(
         structure = _read_structure(input_path)
         if input_path.suffix.lower() in (".cif", ".mmcif"):
             LOGGER.warning(
-                "Non-atomic mmCIF categories may not be preserved by CLI "
-                "conversion; use the in-memory Gemmi API when metadata "
-                "preservation is required."
+                "Non-atomic mmCIF categories are not preserved when parsed "
+                "with Biopython."
             )
         LOGGER.info("JAX backend: %s", jax.default_backend())
         result = renumber_structure(

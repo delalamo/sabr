@@ -64,8 +64,7 @@ field limits still require an explicitly named mmCIF output. Writes are atomic,
 so a failed run does not leave a partial output.
 
 CLI conversion guarantees preservation of atomic structure content, not
-arbitrary non-atomic mmCIF categories. It warns for every mmCIF input. When
-those categories matter, load a Gemmi structure and use the in-memory API.
+arbitrary non-atomic mmCIF categories. It warns for every mmCIF input.
 
 ## Python API
 
@@ -77,38 +76,19 @@ structure = PDBParser(QUIET=True).get_structure("antibody", "antibody.pdb")
 numbered = renumber_structure(structure, chain="H")
 ```
 
-Gemmi structures use the same function:
+`renumber_structure` accepts a Biopython `Structure`, never mutates its input,
+and returns a new Biopython `Structure`. Non-target chains, hetero residues,
+waters, and residues outside an inclusive `residue_range` are preserved. SAbR
+rejects multi-model structures rather than silently modifying only one model.
+If a partial range would create duplicate residue IDs with unchanged residues,
+the operation fails with an explanation.
 
-```python
-import gemmi
-from sabr import renumber_structure
-
-structure = gemmi.read_structure("antibody.cif")
-numbered = renumber_structure(
-    structure,
-    chain="heavy_chain",
-    scheme="chothia",
-    chain_type="auto",
-    noise_level=0.0,
-    mode="softalign",
-    residue_range=None,
-    scfv=False,
-)
-```
-
-`renumber_structure` never mutates its input and returns the same concrete
-structure type. Non-target chains, hetero residues, waters, and residues
-outside an inclusive `residue_range` are preserved. SAbR rejects multi-model
-structures rather than silently modifying only one model. If a partial range
-would create duplicate residue IDs with unchanged residues, the operation
-fails with an explanation.
-
-The same-type clone preserves metadata represented by the input BioPython or
-Gemmi object. Alternate conformers are normalized deterministically: a
-complete blank-altloc backbone is preferred, then the complete conformer with
-the greatest summed occupancy, with altloc name as the final tie-breaker.
-Selections above 1,024 polymer residues are rejected before quadratic model
-work; use `residue_range` to select the antibody domain.
+The copy preserves metadata represented by the input Biopython object.
+Alternate conformers are normalized deterministically: a complete blank-altloc
+backbone is preferred, then the complete conformer with the greatest summed
+occupancy, with altloc name as the final tie-breaker. Selections above 1,024
+polymer residues are rejected before quadratic model work; use
+`residue_range` to select the antibody domain.
 
 Modified peptide residues are translated only for sequence generation. Their
 original names and atoms remain unchanged. The committed mapping was generated
@@ -119,9 +99,7 @@ contains only peptide-linking components with exactly one canonical amino-acid
 parent. Unsupported or ambiguous polymer chemistry fails explicitly; no
 runtime network access occurs.
 
-Gemmi itself only represents one-character insertion codes. For unusually
-long loops that need extended codes, use a BioPython structure in memory or
-the CLI with mmCIF output.
+For unusually long loops that need extended insertion codes, use mmCIF output.
 
 ## Scientific behavior
 

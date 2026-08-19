@@ -344,9 +344,8 @@ def test_cli_accepts_mmcif_input(monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert result.output == (
-        "WARNING: Non-atomic mmCIF categories may not be preserved by CLI "
-        "conversion; use the in-memory Gemmi API when metadata preservation "
-        "is required.\n"
+        "WARNING: Non-atomic mmCIF categories are not preserved when parsed "
+        "with Biopython.\n"
     )
     parsed = MMCIFParser(QUIET=True).get_structure("output", output)
     assert parsed[0]["A"]
