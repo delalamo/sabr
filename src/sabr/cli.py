@@ -51,6 +51,25 @@ def _validate_pdb_output(structure) -> None:
                 )
 
 
+def _has_extended_insertion_codes(structure) -> bool:
+    return any(
+        len(residue.id[2].strip()) > 1
+        for residue in structure.get_residues()
+    )
+
+
+def _resolve_output_path(
+    structure, path: Path, no_mmcif: bool = False
+) -> Path:
+    if (
+        path.suffix.lower() == ".pdb"
+        and not no_mmcif
+        and _has_extended_insertion_codes(structure)
+    ):
+        return path.with_suffix(".cif")
+    return path
+
+
 def _write_structure(structure, path: Path) -> None:
     suffix = path.suffix.lower()
     if suffix == ".pdb":
@@ -122,6 +141,11 @@ def _write_structure(structure, path: Path) -> None:
     is_flag=True,
     help="Also try H:K, H:L, K:H, and L:H composite references.",
 )
+@click.option(
+    "--no-mmcif",
+    is_flag=True,
+    help="Forbid automatic mmCIF output for extended insertion codes.",
+)
 @click.option("--overwrite", is_flag=True)
 @click.option("-v", "--verbose", is_flag=True)
 def main(
@@ -134,6 +158,7 @@ def main(
     mode: str,
     residue_range: tuple | None,
     scfv: bool,
+    no_mmcif: bool,
     overwrite: bool,
     verbose: bool,
 ) -> None:
@@ -143,15 +168,7 @@ def main(
         format="%(levelname)s: %(message)s",
         force=True,
     )
-    if output_path.exists() and not overwrite:
-        raise click.ClickException(
-            f"Output already exists: {output_path}. "
-            "Use --overwrite to replace it."
-        )
-
-    temporary = output_path.with_name(
-        f".{output_path.stem}.{uuid.uuid4().hex}.tmp{output_path.suffix}"
-    )
+    temporary = None
     try:
         structure = _read_structure(input_path)
         if input_path.suffix.lower() in (".cif", ".mmcif"):
@@ -171,12 +188,31 @@ def main(
             residue_range=residue_range,
             scfv=scfv,
         )
+        resolved_output_path = _resolve_output_path(
+            result, output_path, no_mmcif=no_mmcif
+        )
+        if resolved_output_path.exists() and not overwrite:
+            raise click.ClickException(
+                f"Output already exists: {resolved_output_path}. "
+                "Use --overwrite to replace it."
+            )
+        if resolved_output_path != output_path:
+            LOGGER.warning(
+                "PDB cannot represent multi-character insertion codes; "
+                "automatically saving mmCIF output to %s. Use --no-mmcif "
+                "to forbid this behavior.",
+                resolved_output_path,
+            )
+        temporary = resolved_output_path.with_name(
+            f".{resolved_output_path.stem}.{uuid.uuid4().hex}"
+            f".tmp{resolved_output_path.suffix}"
+        )
         _write_structure(result, temporary)
-        os.replace(temporary, output_path)
+        os.replace(temporary, resolved_output_path)
     except click.ClickException:
         raise
     except Exception as error:
-        if temporary.exists():
+        if temporary is not None and temporary.exists():
             try:
                 temporary.unlink()
             except OSError as cleanup_error:

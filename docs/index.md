@@ -55,6 +55,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
+     [--no-mmcif]
      [--overwrite] [-v]
 ```
 
@@ -150,6 +151,11 @@ Use mmCIF when a structure has:
 - multi-character insertion codes;
 - residue numbers outside the PDB range `-999` through `9999`; or
 - more than 99,999 atoms.
+
+If a requested `.pdb` output needs multi-character insertion codes, the CLI
+warns and writes the result to the corresponding `.cif` path automatically.
+Pass `--no-mmcif` to forbid this fallback and report the PDB limitation as an
+error. Other PDB field limits do not trigger automatic conversion.
 
 Gemmi structure objects can represent only one-character insertion codes. For
 exceptionally long CDR insertions, use a BioPython structure and mmCIF output.
