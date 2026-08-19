@@ -17,7 +17,7 @@ from sabr.alignment import (
     load_references,
 )
 from sabr.model import encode, load_parameters
-from sabr.numbering import MISSING_IMGT_POSITIONS
+from sabr.numbering import _load_missing_imgt_positions
 from sabr.structure import extract_chain
 
 DATA = Path(__file__).parent / "data"
@@ -112,12 +112,13 @@ def test_missing_imgt_metadata_matches_every_reference_asset():
         load_references(level) for level in constants.NOISE_LEVELS
     ]
     reference_sets.append(load_references(0.0, "softalign"))
+    missing_imgt_positions = _load_missing_imgt_positions()
 
     all_positions = frozenset(range(1, constants.IMGT_MAX_POSITION + 1))
     for references in reference_sets:
         for chain_type, (_, positions) in references.items():
             assert all_positions.difference(positions) == (
-                MISSING_IMGT_POSITIONS[chain_type]
+                missing_imgt_positions[chain_type]
             )
 
 

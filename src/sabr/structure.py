@@ -3,6 +3,7 @@
 import copy
 import functools
 import json
+from dataclasses import dataclass
 from importlib.resources import files
 
 import gemmi
@@ -13,22 +14,15 @@ from Bio.PDB.Structure import Structure as BioStructure
 from sabr import constants
 
 
+@dataclass(frozen=True, slots=True)
 class _ChainData:
     """Private, normalized view of the selected polymer residues."""
 
-    def __init__(
-        self,
-        coords: np.ndarray,
-        sequence: str,
-        residue_ids: list,
-        residue_indices: list,
-        gap_indices: frozenset,
-    ):
-        self.coords = coords
-        self.sequence = sequence
-        self.residue_ids = residue_ids
-        self.residue_indices = residue_indices
-        self.gap_indices = gap_indices
+    coords: np.ndarray
+    sequence: str
+    residue_ids: tuple[tuple[int, str], ...]
+    residue_indices: tuple[int, ...]
+    gap_indices: frozenset[int]
 
 
 def _compute_cb(n_coord: np.ndarray, ca_coord: np.ndarray, c_coord: np.ndarray):
@@ -189,7 +183,18 @@ def _detect_gaps(coords: np.ndarray) -> frozenset:
 def extract_chain(
     structure, chain: str, residue_range: tuple | None
 ) -> _ChainData:
-    """Normalize the selected polymer residues without modifying the input."""
+    """Normalize selected polymer residues without modifying the structure.
+
+    Besides producing model coordinates and a one-letter sequence, extraction
+    retains each residue's index in the original chain so numbering can later
+    be applied to a same-type clone containing all original hetero residues.
+
+    Unknown HETATM residues need a deliberate second pass. Most are ligands or
+    solvent and should be preserved but ignored; an unknown residue with a
+    complete backbone that is peptide-bonded to a recognized amino acid is
+    instead unsupported polymer chemistry and must fail explicitly. Its
+    neighbors are not known until the first pass has classified the chain.
+    """
     target = _find_chain(structure, chain)
     is_biopython = isinstance(structure, BioStructure)
     coords = []
@@ -200,6 +205,8 @@ def extract_chain(
     unknown_hetero = []
     polymer_ids = set()
 
+    # First pass: adapt BioPython/Gemmi metadata and separate recognized
+    # polymer residues from unknown HETATM records that may merely be ligands.
     for index, residue in enumerate(target):
         if is_biopython:
             number = residue.id[1]
@@ -272,6 +279,9 @@ def extract_chain(
             )
         )
 
+    # A backbone-shaped HETATM is safe to ignore only when it is not connected
+    # to the recognized polymer on either side. This catches unsupported
+    # peptide residues without rejecting unrelated ligands or solvent.
     for index, residue_name, number, insertion_code, backbone in unknown_hetero:
         previous = next(
             (entry for entry in reversed(normalized) if entry[0] < index),
@@ -303,6 +313,9 @@ def extract_chain(
             "residue_range to select one antibody domain."
         )
 
+    # Second pass: build the dense model inputs after residue classification is
+    # complete. Modified residues use their canonical parent only for sequence
+    # generation; the returned numbering is applied to unchanged source atoms.
     for index, number, insertion_code, parent_name, backbone in normalized:
         n_coord, ca_coord, c_coord = backbone
         residue_coords = np.stack(
@@ -332,8 +345,8 @@ def extract_chain(
     return _ChainData(
         stacked_coords,
         "".join(sequence),
-        residue_ids,
-        residue_indices,
+        tuple(residue_ids),
+        tuple(residue_indices),
         _detect_gaps(stacked_coords),
     )
 

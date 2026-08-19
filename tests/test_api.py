@@ -132,7 +132,7 @@ def test_numeric_residue_range_includes_insertion_codes():
         "insertions", DATA / "test_insertion_codes.pdb"
     )
     data = extract_chain(structure, "A", (52, 52))
-    assert data.residue_ids == [(52, ""), (52, "A"), (52, "B")]
+    assert data.residue_ids == ((52, ""), (52, "A"), (52, "B"))
 
 
 def test_range_that_would_collide_with_unchanged_ids_is_rejected(
