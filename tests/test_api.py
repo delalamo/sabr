@@ -176,6 +176,33 @@ def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
     }
 
 
+def test_chain_type_choices_come_from_reference_asset(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "load_references",
+        lambda noise_level, mode: {"X": (None, None)},
+    )
+    options = api._RenumberOptions(
+        scheme="imgt",
+        chain_type="x",
+        noise_level=0.0,
+        residue_range=None,
+        mode="sabr",
+        scfv=False,
+    )
+    assert options.chain_type == "X"
+
+    with pytest.raises(ValueError, match="auto, X"):
+        api._RenumberOptions(
+            scheme="imgt",
+            chain_type="H",
+            noise_level=0.0,
+            residue_range=None,
+            mode="sabr",
+            scfv=False,
+        )
+
+
 def test_missing_backbone_is_reported_with_the_residue():
     structure = PDBParser(QUIET=True).get_structure(
         "missing", DATA / "test_no_backbone.pdb"

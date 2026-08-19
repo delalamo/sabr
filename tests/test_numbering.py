@@ -170,6 +170,21 @@ def test_missing_deletion_insertion_is_idempotent_and_preserves_insertions():
     assert numbering._insert_missing_deletions(expanded, "K") is expanded
 
 
+def test_reference_type_choices_come_from_reference_asset(monkeypatch):
+    monkeypatch.setattr(
+        numbering,
+        "_load_missing_imgt_positions",
+        lambda: {"X": frozenset({2})},
+    )
+    states = [((1, "m"), 0)]
+    assert numbering._insert_missing_deletions(states, "X") == [
+        ((1, "m"), 0),
+        ((2, "d"), None),
+    ]
+    with pytest.raises(ValueError, match="one of X"):
+        numbering._insert_missing_deletions(states, "H")
+
+
 @pytest.mark.parametrize(
     ("ref_positions", "message"),
     [

@@ -42,9 +42,9 @@ def _load_missing_imgt_positions() -> dict[str, frozenset[int]]:
     all_positions = frozenset(range(1, constants.IMGT_MAX_POSITION + 1))
     return {
         chain_type: all_positions.difference(
-            int(position) for position in data[chain_type]["idxs"]
+            int(position) for position in reference["idxs"]
         )
-        for chain_type in constants.CHAIN_TYPES
+        for chain_type, reference in data.items()
     }
 
 
@@ -186,11 +186,13 @@ def alignment_to_states(
 
 def _insert_missing_deletions(states: list, ref_type: str) -> list:
     """Add absent reference positions as idempotent deletion states."""
-    if ref_type not in constants.CHAIN_TYPES:
-        raise ValueError("ref_type must be 'H', 'K', or 'L'.")
+    missing_by_type = _load_missing_imgt_positions()
+    if ref_type not in missing_by_type:
+        choices = ", ".join(missing_by_type)
+        raise ValueError(f"ref_type must be one of {choices}.")
 
     represented = {state[0][0] for state in states}
-    missing = _load_missing_imgt_positions()[ref_type].difference(represented)
+    missing = missing_by_type[ref_type].difference(represented)
     if not missing:
         return states
 
@@ -241,13 +243,15 @@ def _number_domain_alignment(
         ref_positions=ref_positions,
     )
     if ref_type is not None:
-        if ref_type not in constants.CHAIN_TYPES:
-            raise ValueError("ref_type must be 'H', 'K', or 'L'.")
+        missing_by_type = _load_missing_imgt_positions()
+        if ref_type not in missing_by_type:
+            choices = ", ".join(missing_by_type)
+            raise ValueError(f"ref_type must be one of {choices}.")
         if ref_positions is not None:
             missing_positions = frozenset(
                 range(1, constants.IMGT_MAX_POSITION + 1)
             ).difference(ref_positions)
-            reference_missing = _load_missing_imgt_positions()[ref_type]
+            reference_missing = missing_by_type[ref_type]
             if missing_positions != reference_missing:
                 raise ValueError(
                     f"ref_positions do not match the {ref_type} reference."

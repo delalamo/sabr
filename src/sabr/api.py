@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from sabr import constants
-from sabr.alignment import align
+from sabr.alignment import align, load_references
 from sabr.model import encode
 from sabr.numbering import number_alignment
 from sabr.structure import apply_numbering, extract_chain
@@ -19,12 +19,21 @@ def _normalize_choice(value: str, name: str, choices: tuple[str, ...]) -> str:
     return value.lower()
 
 
-def _normalize_chain_type(chain_type: str) -> str:
+def _normalize_chain_type(
+    chain_type: str,
+    noise_level: float,
+    mode: str,
+) -> str:
     if not isinstance(chain_type, str):
-        raise ValueError("chain_type must be 'auto', 'H', 'K', or 'L'.")
+        raise ValueError("chain_type must be a reference type or 'auto'.")
     normalized = "auto" if chain_type.lower() == "auto" else chain_type.upper()
-    if normalized not in ("auto", *constants.CHAIN_TYPES):
-        raise ValueError("chain_type must be 'auto', 'H', 'K', or 'L'.")
+    if normalized == "auto":
+        return normalized
+
+    reference_types = tuple(load_references(noise_level, mode))
+    if normalized not in reference_types:
+        choices = ", ".join(("auto", *reference_types))
+        raise ValueError(f"chain_type must be one of {choices}.")
     return normalized
 
 
@@ -49,24 +58,31 @@ def _normalize_noise_level(noise_level: float) -> float:
 def _validate_residue_range(
     residue_range: tuple[int, int] | None,
 ) -> None:
+    """Validate inclusive structure residue-number bounds.
+
+    The bounds are compared with BioPython ``residue.id[1]`` or Gemmi
+    ``residue.seqid.num``. They are residue numbers from the input structure,
+    not zero-based sequence or array indices, and need not begin at one or be
+    contiguous. Every insertion-code variant sharing a selected residue number
+    is included.
+    """
     if residue_range is None:
         return
-    if (
-        not isinstance(residue_range, tuple)
-        or len(residue_range) != 2
-        or not all(
-            isinstance(value, int) and not isinstance(value, bool)
-            for value in residue_range
-        )
+    error = "residue_range must be an inclusive (start, end) tuple."
+    if not isinstance(residue_range, tuple):
+        raise ValueError(error)
+    if len(residue_range) != 2:
+        raise ValueError(error)
+    if not all(
+        isinstance(value, int) and not isinstance(value, bool)
+        for value in residue_range
     ):
-        raise ValueError(
-            "residue_range must be an inclusive (start, end) tuple."
-        )
+        raise ValueError(error)
     if residue_range[0] > residue_range[1]:
         raise ValueError("residue_range start must not exceed its end.")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _RenumberOptions:
     """Validated and normalized arguments for one renumbering operation."""
 
@@ -78,21 +94,15 @@ class _RenumberOptions:
     scfv: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "scheme",
-            _normalize_choice(
-                self.scheme, "scheme", constants.NUMBERING_SCHEMES
-            ),
+        self.scheme = _normalize_choice(
+            self.scheme, "scheme", constants.NUMBERING_SCHEMES
         )
-        object.__setattr__(
-            self, "chain_type", _normalize_chain_type(self.chain_type)
-        )
-        object.__setattr__(
-            self, "noise_level", _normalize_noise_level(self.noise_level)
-        )
-        object.__setattr__(
-            self, "mode", _normalize_choice(self.mode, "mode", constants.MODES)
+        self.noise_level = _normalize_noise_level(self.noise_level)
+        self.mode = _normalize_choice(self.mode, "mode", constants.MODES)
+        self.chain_type = _normalize_chain_type(
+            self.chain_type,
+            self.noise_level,
+            self.mode,
         )
         _validate_residue_range(self.residue_range)
         if not isinstance(self.scfv, bool):
