@@ -121,7 +121,7 @@ def renumber_structure(
     mode: str = "sabr",
     scfv: bool = False,
 ):
-    """Return a non-mutating, same-type renumbered structure.
+    """Return a renumbered copy of a Biopython structure.
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
     penalties as one scientifically consistent parameter set. ``scfv=True``

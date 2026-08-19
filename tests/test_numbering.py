@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import gemmi
 import numpy as np
 import pytest
 from Bio.PDB import PDBParser
@@ -317,13 +316,6 @@ def test_8sve_huge_cdr1_matches_the_accepted_full_mapping():
     assert actual == golden["mapping"]
     assert sum(item[2] == 32 for item in actual) == 69
     assert sum(item[2] == 33 for item in actual) == 70
-
-
-def test_8sve_gemmi_reports_its_extended_insertion_code_limit():
-    structure = gemmi.read_structure(str(DATA / "8sve_L.pdb"))
-    with pytest.warns(UserWarning, match="CDR1"):
-        with pytest.raises(ValueError, match="extended insertion codes"):
-            renumber_structure(structure, "M", scheme="imgt", chain_type="K")
 
 
 def test_number_alignment_retains_original_query_rows(monkeypatch):
