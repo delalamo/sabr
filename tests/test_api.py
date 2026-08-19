@@ -117,7 +117,7 @@ def test_numeric_residue_range_includes_insertion_codes():
         "insertions", DATA / "test_insertion_codes.pdb"
     )
     data = extract_chain(structure, "A", (52, 52))
-    assert data.residue_ids == [(52, ""), (52, "A"), (52, "B")]
+    assert data.residue_ids == ((52, ""), (52, "A"), (52, "B"))
 
 
 def test_range_that_would_collide_with_unchanged_ids_is_rejected(
@@ -164,6 +164,33 @@ def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
         "encoder": "softalign",
         "alignment": "softalign",
     }
+
+
+def test_chain_type_choices_come_from_reference_asset(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "load_references",
+        lambda noise_level, mode: {"X": (None, None)},
+    )
+    options = api._RenumberOptions(
+        scheme="imgt",
+        chain_type="x",
+        noise_level=0.0,
+        residue_range=None,
+        mode="sabr",
+        scfv=False,
+    )
+    assert options.chain_type == "X"
+
+    with pytest.raises(ValueError, match="auto, X"):
+        api._RenumberOptions(
+            scheme="imgt",
+            chain_type="H",
+            noise_level=0.0,
+            residue_range=None,
+            mode="sabr",
+            scfv=False,
+        )
 
 
 def test_missing_backbone_is_reported_with_the_residue():
