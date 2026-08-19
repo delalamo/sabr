@@ -51,10 +51,6 @@ include = [
 [tool.hatch.version]
 source = "vcs"
 
-[tool.hatch.version.raw-options]
-# This nonzero development tag cannot be advanced by setuptools-scm.
-git_describe_command = "git describe --dirty --tags --long --match v[0-9]* --exclude v0.4.3.dev1"
-
 [tool.black]
 line-length = 80
 target-version = ["py311"]
