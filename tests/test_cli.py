@@ -214,9 +214,7 @@ def test_no_mmcif_rejects_extended_insertion_codes(monkeypatch, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_automatic_mmcif_respects_overwrite_protection(
-    monkeypatch, tmp_path
-):
+def test_automatic_mmcif_respects_overwrite_protection(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli, "renumber_structure", _with_extended_insertion_code()
     )

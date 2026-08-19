@@ -53,14 +53,11 @@ def _validate_pdb_output(structure) -> None:
 
 def _has_extended_insertion_codes(structure) -> bool:
     return any(
-        len(residue.id[2].strip()) > 1
-        for residue in structure.get_residues()
+        len(residue.id[2].strip()) > 1 for residue in structure.get_residues()
     )
 
 
-def _resolve_output_path(
-    structure, path: Path, no_mmcif: bool = False
-) -> Path:
+def _resolve_output_path(structure, path: Path, no_mmcif: bool = False) -> Path:
     if (
         path.suffix.lower() == ".pdb"
         and not no_mmcif
