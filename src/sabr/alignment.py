@@ -165,12 +165,12 @@ def load_references(
     with path.open("rb") as handle:
         data = np.load(handle, allow_pickle=True)["arr_0"].item()
     references = {}
-    for chain_type in constants.CHAIN_TYPES:
-        embeddings = np.asarray(data[chain_type]["array"])
+    for chain_type, reference in data.items():
+        embeddings = np.asarray(reference["array"])
         embeddings.flags.writeable = False
         references[chain_type] = (
             embeddings,
-            tuple(int(position) for position in data[chain_type]["idxs"]),
+            tuple(int(position) for position in reference["idxs"]),
         )
 
     if scfv:

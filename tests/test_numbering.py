@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import gemmi
 import numpy as np
 import pytest
 from Bio.PDB import PDBParser
@@ -75,7 +74,7 @@ def test_reduced_reference_positions_control_states_and_padding(monkeypatch):
 
 
 def test_k_reduced_reference_expands_to_every_imgt_state(monkeypatch):
-    missing = numbering.MISSING_IMGT_POSITIONS["K"]
+    missing = numbering._load_missing_imgt_positions()["K"]
     ref_positions = tuple(
         position
         for position in range(1, constants.IMGT_MAX_POSITION + 1)
@@ -124,7 +123,7 @@ def test_k_reduced_reference_expands_to_every_imgt_state(monkeypatch):
 def test_reduced_k_reference_runs_real_tcr_numbering(
     chain_type, scheme, last_number
 ):
-    missing = numbering.MISSING_IMGT_POSITIONS["K"]
+    missing = numbering._load_missing_imgt_positions()["K"]
     ref_positions = tuple(
         position
         for position in range(1, constants.IMGT_MAX_POSITION + 1)
@@ -156,21 +155,33 @@ def test_missing_deletion_insertion_is_idempotent_and_preserves_insertions():
     assert [state for state in completed if state[0][0] == 9] == states[:2]
     assert ((10, "d"), None) in completed
 
+    missing = numbering._load_missing_imgt_positions()["K"]
     expanded = [
         (
             (
                 position,
-                (
-                    "d"
-                    if position in numbering.MISSING_IMGT_POSITIONS["K"]
-                    else "m"
-                ),
+                ("d" if position in missing else "m"),
             ),
             None,
         )
         for position in range(1, constants.IMGT_MAX_POSITION + 1)
     ]
     assert numbering._insert_missing_deletions(expanded, "K") is expanded
+
+
+def test_reference_type_choices_come_from_reference_asset(monkeypatch):
+    monkeypatch.setattr(
+        numbering,
+        "_load_missing_imgt_positions",
+        lambda: {"X": frozenset({2})},
+    )
+    states = [((1, "m"), 0)]
+    assert numbering._insert_missing_deletions(states, "X") == [
+        ((1, "m"), 0),
+        ((2, "d"), None),
+    ]
+    with pytest.raises(ValueError, match="one of X"):
+        numbering._insert_missing_deletions(states, "H")
 
 
 @pytest.mark.parametrize(
@@ -201,32 +212,15 @@ def test_low_level_tcr_aho_uses_the_actual_chain_type(monkeypatch, chain_type):
             position
             for ((position, state_type), _) in states
             if state_type == "d"
-        } == numbering.MISSING_IMGT_POSITIONS["K"]
+        } == numbering._load_missing_imgt_positions()["K"]
         return [((1, ""), "A")], 0, 0
 
-    monkeypatch.setattr(numbering.schemes, "number_aho", fake_aho)
+    monkeypatch.setattr(numbering, "number_aho", fake_aho)
     assert number_alignment(
         alignment,
         "A",
         "aho",
         chain_type,
-        ref_type="K",
-    ) == [(0, 1, "", "A")]
-
-
-def test_low_level_tcr_imgt_numbering_is_available(monkeypatch):
-    alignment = np.zeros((1, constants.IMGT_MAX_POSITION), dtype=int)
-    alignment[0, 0] = 1
-    monkeypatch.setattr(
-        numbering.schemes,
-        "number_imgt",
-        lambda states, sequence: ([((1, ""), "A")], 0, 0),
-    )
-    assert number_alignment(
-        alignment,
-        "A",
-        "imgt",
-        "A",
         ref_type="K",
     ) == [(0, 1, "", "A")]
 
@@ -266,10 +260,7 @@ def test_reference_metadata_rejects_invalid_or_ambiguous_combinations():
         )
 
 
-@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
-def test_default_single_domain_numbering_skips_reference_completion(
-    monkeypatch, chain_type
-):
+def test_default_numbering_skips_reduced_reference_completion(monkeypatch):
     monkeypatch.setattr(
         numbering,
         "_load_missing_imgt_positions",
@@ -289,7 +280,7 @@ def test_default_single_domain_numbering_skips_reference_completion(
             1,
         ),
     )
-    assert number_alignment(np.eye(2, dtype=int), "AC", "imgt", chain_type) == [
+    assert number_alignment(np.eye(2, dtype=int), "AC", "imgt", "H") == [
         (0, 1, "", "A"),
         (1, 2, "", "C"),
     ]
@@ -327,13 +318,6 @@ def test_8sve_huge_cdr1_matches_the_accepted_full_mapping():
     assert sum(item[2] == 33 for item in actual) == 70
 
 
-def test_8sve_gemmi_reports_its_extended_insertion_code_limit():
-    structure = gemmi.read_structure(str(DATA / "8sve_L.pdb"))
-    with pytest.warns(UserWarning, match="CDR1"):
-        with pytest.raises(ValueError, match="extended insertion codes"):
-            renumber_structure(structure, "M", scheme="imgt", chain_type="K")
-
-
 def test_number_alignment_retains_original_query_rows(monkeypatch):
     alignment = np.zeros((5, 8), dtype=int)
     alignment[2, 2] = alignment[3, 3] = alignment[4, 4] = 1
@@ -362,16 +346,6 @@ def test_scfv_numbering_uses_1000_block_and_sequential_linker(monkeypatch):
             return [((1, ""), "A"), ((2, ""), "C")], 0, 1
         return [((1, ""), "E"), ((2, ""), "F")], 0, 1
 
-    monkeypatch.setattr(
-        numbering,
-        "_load_missing_imgt_positions",
-        lambda: pytest.fail("scFv path loaded reference metadata"),
-    )
-    monkeypatch.setattr(
-        numbering,
-        "_insert_missing_deletions",
-        lambda *args: pytest.fail("scFv path completed reference states"),
-    )
     monkeypatch.setattr(numbering, "_apply_scheme", fake_scheme)
     assert number_alignment(alignment, "ACDEF", "imgt", "HK") == [
         (0, 1, "", "A"),

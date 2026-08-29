@@ -1,11 +1,10 @@
 import copy
 from pathlib import Path
 
-import gemmi
 import numpy as np
 import pytest
 from Bio.PDB import Atom, Chain, PDBParser, Residue
-from Bio.PDB.Structure import Structure as BioStructure
+from Bio.PDB.Structure import Structure
 
 import sabr.api as api
 from sabr import renumber_structure
@@ -19,17 +18,6 @@ def _bio_ids(structure, chain):
         (residue.id[1], residue.id[2].strip())
         for residue in structure[0][chain]
         if not residue.id[0].strip()
-    ]
-
-
-def _gemmi_ids(structure, chain):
-    target = next(
-        candidate for candidate in structure[0] if candidate.name == chain
-    )
-    return [
-        (residue.seqid.num, residue.seqid.icode.strip())
-        for residue in target
-        if residue.het_flag == "A"
     ]
 
 
@@ -72,21 +60,18 @@ def _stub_pipeline(monkeypatch, captured_modes=None, captured_options=None):
     )
 
 
-def test_biopython_and_gemmi_are_non_mutating_and_equivalent():
+def test_biopython_structure_is_copied_before_numbering(monkeypatch):
+    _stub_pipeline(monkeypatch)
     path = DATA / "test_heavy_chain.pdb"
-    bio = PDBParser(QUIET=True).get_structure("bio", path)
-    gemmi_structure = gemmi.read_structure(str(path))
-    original_bio = _bio_ids(bio, "F")
-    original_gemmi = _gemmi_ids(gemmi_structure, "F")
+    structure = PDBParser(QUIET=True).get_structure("structure", path)
+    original_ids = _bio_ids(structure, "F")
 
-    bio_result = renumber_structure(bio, "F", chain_type="H")
-    gemmi_result = renumber_structure(gemmi_structure, "F", chain_type="H")
+    result = renumber_structure(structure, "F", chain_type="H")
 
-    assert isinstance(bio_result, BioStructure)
-    assert isinstance(gemmi_result, gemmi.Structure)
-    assert _bio_ids(bio, "F") == original_bio
-    assert _gemmi_ids(gemmi_structure, "F") == original_gemmi
-    assert _bio_ids(bio_result, "F") == _gemmi_ids(gemmi_result, "F")
+    assert isinstance(result, Structure)
+    assert result is not structure
+    assert _bio_ids(structure, "F") == original_ids
+    assert _bio_ids(result, "F") != original_ids
 
 
 def test_non_target_content_and_out_of_range_residues_are_preserved(
@@ -134,7 +119,7 @@ def test_numeric_residue_range_includes_insertion_codes():
         "insertions", DATA / "test_insertion_codes.pdb"
     )
     data = extract_chain(structure, "A", (52, 52))
-    assert data.residue_ids == [(52, ""), (52, "A"), (52, "B")]
+    assert data.residue_ids == ((52, ""), (52, "A"), (52, "B"))
 
 
 def test_range_that_would_collide_with_unchanged_ids_is_rejected(
@@ -157,12 +142,17 @@ def test_range_that_would_collide_with_unchanged_ids_is_rejected(
         )
 
 
-def test_arbitrary_gemmi_chain_ids_are_supported(monkeypatch):
+def test_arbitrary_biopython_chain_ids_are_supported(monkeypatch):
     _stub_pipeline(monkeypatch)
-    structure = gemmi.read_structure(str(DATA / "test_heavy_chain.pdb"))
-    structure[0][0].name = "heavy_chain"
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    target = structure[0]["F"]
+    structure[0].detach_child("F")
+    target.id = "heavy_chain"
+    structure[0].add(target)
     result = renumber_structure(structure, "heavy_chain", chain_type="H")
-    assert result[0][0].name == "heavy_chain"
+    assert result[0]["heavy_chain"].id == "heavy_chain"
 
 
 def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
@@ -210,6 +200,33 @@ def test_scfv_is_the_documented_chain_type_alias(monkeypatch):
         "chain_type": "HK,HL,KH,LH",
         "scfv": True,
     }
+
+
+def test_chain_type_domain_choices_come_from_reference_asset(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "load_references",
+        lambda noise_level, mode: {"X": (None, None)},
+    )
+    options = api._RenumberOptions(
+        scheme="imgt",
+        chain_type="x",
+        noise_level=0.0,
+        residue_range=None,
+        mode="sabr",
+        scfv=False,
+    )
+    assert options.chain_type == "X"
+
+    with pytest.raises(ValueError, match="auto, X"):
+        api._RenumberOptions(
+            scheme="imgt",
+            chain_type="H",
+            noise_level=0.0,
+            residue_range=None,
+            mode="sabr",
+            scfv=False,
+        )
 
 
 def test_missing_backbone_is_reported_with_the_residue():
