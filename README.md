@@ -52,11 +52,11 @@ do not vary with `--noise-level`, so that option is ignored in this mode.
 
 Use `--scfv` to search only the scFv candidate set. It is equivalent to
 `--chain-type HK,HL,KH,LH` and still requires the default automatic chain type
-when used as a flag. Each domain after the first is numbered with another 128
-offset so all domains have unique residue IDs in one structure chain; linker
-residues use insertion codes after the preceding domain. Multi-domain
-references use the selected parameter mode, so either form can be combined
-with `--mode softalign`.
+when used as a flag. Multi-domain results place successive domains in separate
+1000-number residue blocks: `1–128`, `1001–1128`, `2001–2128`, and so on.
+Linker residues continue sequentially from the preceding domain's last number.
+Multi-domain references use the selected parameter mode, so either form can be
+combined with `--mode softalign`.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). Use mmCIF
 when chain names or ANARCI insertion codes exceed PDB's one-character fields.

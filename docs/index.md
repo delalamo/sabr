@@ -78,9 +78,9 @@ on failure.
 
 To search only the scFv candidate set, pass `--scfv`. This is equivalent to
 `--chain-type HK,HL,KH,LH`; as a compatibility flag it requires the default
-automatic chain type. SAbR offsets each successive
-domain's assigned numbers by another 128 to keep residue IDs unique and
-numbers every linker as insertions after the preceding domain. Multi-domain
+automatic chain type. SAbR places successive domains in separate 1000-number
+residue blocks: `1–128`, `1001–1128`, `2001–2128`, and so on. Every linker
+continues sequentially from the preceding domain's last number. Multi-domain
 references use the selected parameter mode, so either form can be combined
 with `--mode softalign`. Gap-open and gap-extension penalties are disabled for
 query linker residues aligned at every boundary between domain references.

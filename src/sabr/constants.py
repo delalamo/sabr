@@ -41,6 +41,7 @@ NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
 # IMGT constants
 
 IMGT_MAX_POSITION = 128
+DOMAIN_NUMBERING_STRIDE = 1000
 
 # CDR loop definitions (inclusive)
 IMGT_LOOPS = {

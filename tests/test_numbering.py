@@ -350,7 +350,7 @@ def test_number_alignment_retains_original_query_rows(monkeypatch):
     ]
 
 
-def test_scfv_numbering_offsets_second_domain_and_numbers_linker(monkeypatch):
+def test_scfv_numbering_uses_1000_block_and_sequential_linker(monkeypatch):
     alignment = np.zeros((5, 256), dtype=int)
     alignment[0, 0] = 1
     alignment[1, 1] = 1
@@ -376,9 +376,9 @@ def test_scfv_numbering_offsets_second_domain_and_numbers_linker(monkeypatch):
     assert number_alignment(alignment, "ACDEF", "imgt", "HK") == [
         (0, 1, "", "A"),
         (1, 2, "", "C"),
-        (2, 2, "A", "D"),
-        (3, 129, "", "E"),
-        (4, 130, "", "F"),
+        (2, 3, "", "D"),
+        (3, 1001, "", "E"),
+        (4, 1002, "", "F"),
     ]
 
 
@@ -398,12 +398,12 @@ def test_higher_order_numbering_offsets_every_domain_and_linker(monkeypatch):
     assert number_alignment(alignment, "ACDEFGHI", "imgt", "HHK") == [
         (0, 1, "", "A"),
         (1, 2, "", "C"),
-        (2, 2, "A", "D"),
-        (3, 129, "", "E"),
-        (4, 130, "", "F"),
-        (5, 130, "A", "G"),
-        (6, 257, "", "H"),
-        (7, 258, "", "I"),
+        (2, 3, "", "D"),
+        (3, 1001, "", "E"),
+        (4, 1002, "", "F"),
+        (5, 1003, "", "G"),
+        (6, 2001, "", "H"),
+        (7, 2002, "", "I"),
     ]
 
 

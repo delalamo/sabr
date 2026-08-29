@@ -307,7 +307,7 @@ def number_alignment(
             records = [
                 (
                     query_row,
-                    number + domain_index * constants.IMGT_MAX_POSITION,
+                    number + domain_index * constants.DOMAIN_NUMBERING_STRIDE,
                     insertion_code,
                     amino_acid,
                 )
@@ -319,24 +319,16 @@ def number_alignment(
     for previous_domain, next_domain in zip(domains, domains[1:]):
         linker_start = previous_domain[-1][0] + 1
         linker_end = next_domain[0][0]
-        used_ids = {
-            (number, insertion_code)
-            for _, number, insertion_code, _ in previous_domain
-        }
-        linker_number = previous_domain[-1][1]
-        available_codes = (
-            code
-            for code in schemes.alphabet
-            if code.strip() and (linker_number, code) not in used_ids
-        )
         records.extend(
             (
                 query_row,
-                linker_number,
-                next(available_codes),
+                previous_domain[-1][1] + linker_index,
+                "",
                 sequence[query_row],
             )
-            for query_row in range(linker_start, linker_end)
+            for linker_index, query_row in enumerate(
+                range(linker_start, linker_end), start=1
+            )
         )
         records.extend(next_domain)
     LOGGER.info(
