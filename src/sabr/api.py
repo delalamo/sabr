@@ -11,6 +11,33 @@ from sabr.structure import apply_numbering, extract_chain
 LOGGER = logging.getLogger(__name__)
 
 
+def _normalize_chain_type(chain_type: str) -> str:
+    """Normalize an automatic or comma-separated domain candidate list."""
+    if not isinstance(chain_type, str):
+        raise ValueError(
+            "chain_type must be 'auto' or a comma-separated list of H, K, "
+            "and L domain representations."
+        )
+
+    if chain_type.strip().lower() == "auto":
+        return "auto"
+
+    candidates = []
+    for value in chain_type.split(","):
+        candidate = value.strip().upper()
+        if not candidate or any(
+            domain_type not in constants.CHAIN_TYPES
+            for domain_type in candidate
+        ):
+            raise ValueError(
+                "chain_type must be 'auto' or a comma-separated list of H, "
+                "K, and L domain representations."
+            )
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return ",".join(candidates)
+
+
 def _validate_options(
     scheme: str,
     chain_type: str,
@@ -26,13 +53,7 @@ def _validate_options(
         raise ValueError(
             f"scheme must be one of {', '.join(constants.NUMBERING_SCHEMES)}."
         )
-    if not isinstance(chain_type, str):
-        raise ValueError("chain_type must be 'auto', 'H', 'K', or 'L'.")
-    normalized_chain_type = (
-        "auto" if chain_type.lower() == "auto" else chain_type.upper()
-    )
-    if normalized_chain_type not in ("auto", *constants.CHAIN_TYPES):
-        raise ValueError("chain_type must be 'auto', 'H', 'K', or 'L'.")
+    normalized_chain_type = _normalize_chain_type(chain_type)
     if isinstance(noise_level, bool):
         raise ValueError(
             f"noise_level must be one of {constants.NOISE_LEVELS}."
@@ -67,6 +88,8 @@ def _validate_options(
         raise ValueError("scfv must be a boolean.")
     if scfv and normalized_chain_type != "auto":
         raise ValueError("scfv requires chain_type='auto'.")
+    if scfv:
+        normalized_chain_type = ",".join(constants.SCFV_CANDIDATES)
     return (
         scheme.lower(),
         normalized_chain_type,
@@ -89,8 +112,10 @@ def renumber_structure(
     """Return a non-mutating, same-type renumbered structure.
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
-    penalties as one scientifically consistent parameter set. ``scfv=True``
-    adds the four supported two-domain composite references.
+    penalties as one scientifically consistent parameter set. ``chain_type``
+    accepts an ordered, comma-separated list of domain representations such
+    as ``"H,K,HK,HL"``. ``scfv=True`` is equivalent to
+    ``chain_type="HK,HL,KH,LH"``.
     """
     scheme, chain_type, noise_level, mode, scfv = _validate_options(
         scheme, chain_type, noise_level, residue_range, mode, scfv

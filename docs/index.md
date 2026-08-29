@@ -28,6 +28,18 @@ sabr -i antibody.cif -c light_chain -o numbered.cif \
   --scheme chothia --chain-type K
 ```
 
+Pass comma-separated candidates to restrict automatic selection. Every
+candidate is an ordered sequence of `H`, `K`, and `L` domains:
+
+```bash
+sabr -i multispecific.cif -c A -o numbered.cif \
+  --chain-type HHK,HHL
+```
+
+For example, `H,K` tries only heavy and kappa single domains, while `HK,HL`
+tries heavy-kappa and heavy-lambda two-domain chains. `HHK,HHL` can represent
+a VHH followed by an scFv whose heavy domain precedes its light domain.
+
 Use the complete SoftAlign parameter set (encoder, reference embeddings, and
 gap penalties):
 
@@ -50,7 +62,7 @@ The complete interface is:
 ```text
 sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
-     [-t auto|H|K|L]
+     [-t auto|TYPES]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [-m sabr|softalign]
      [--residue-range START END]
@@ -64,20 +76,19 @@ ignored in that mode. Normal output contains only warnings and errors. Use
 `--verbose` to show the JAX backend, chain-selection scores, and a traceback
 on failure.
 
-For a single chain containing two linked variable domains, pass `--scfv`.
-This adds H:K, H:L, K:H, and L:H concatenated references to the normal H, K,
-and L candidates. SAbR offsets the second domain's assigned numbers by 128 to
-keep residue IDs unique and numbers the linker as insertions after domain one.
-scFv mode requires the default automatic chain type because each composite
-reference already specifies both domain types.
-Composite references use the selected parameter mode, so `--scfv` can be
-combined with `--mode softalign`.
-Gap-open and gap-extension penalties are disabled for query linker residues
-aligned at the boundary between the two references. All other internal gap
-transitions retain the selected parameter mode's normal penalties.
+To search only the scFv candidate set, pass `--scfv`. This is equivalent to
+`--chain-type HK,HL,KH,LH`; as a compatibility flag it requires the default
+automatic chain type. SAbR offsets each successive
+domain's assigned numbers by another 128 to keep residue IDs unique and
+numbers every linker as insertions after the preceding domain. Multi-domain
+references use the selected parameter mode, so either form can be combined
+with `--mode softalign`. Gap-open and gap-extension penalties are disabled for
+query linker residues aligned at every boundary between domain references.
+All other internal gap transitions retain the selected parameter mode's
+normal penalties.
 
 When candidates are compared, SAbR applies the normal affine gap-open and
-gap-extension costs to unaligned query and reference termini of composite
+gap-extension costs to unaligned query and reference termini of multi-domain
 representations. This post-hoc selection penalty does not change the computed
 alignments or their raw scores.
 
@@ -192,5 +203,6 @@ Common errors include:
 - output that cannot be represented in PDB format; and
 - selections above the 1,024-residue safety limit.
 
-For long or multi-domain chains, pass `--residue-range` on the command line or
-`residue_range=(start, end)` in Python.
+For a long chain containing domains outside the desired candidate, pass
+`--residue-range` on the command line or `residue_range=(start, end)` in
+Python.

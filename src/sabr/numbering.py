@@ -270,10 +270,10 @@ def number_alignment(
     """Return query-row-to-number records for one alignment.
 
     ``ref_type`` and ``ref_positions`` are opt-in metadata for reduced
-    single-domain references. Normal 128-column antibody and 256-column scFv
+    single-domain references. Normal full-width single- and multi-domain
     alignments leave them unset.
     """
-    if ":" not in chain_type:
+    if len(chain_type) == 1:
         return _number_domain_alignment(
             alignment,
             sequence,
@@ -289,11 +289,11 @@ def number_alignment(
             "alignments."
         )
 
-    chain_types = chain_type.split(":")
+    chain_types = tuple(chain_type)
     expected_columns = len(chain_types) * constants.IMGT_MAX_POSITION
     if alignment.ndim != 2 or alignment.shape[1] != expected_columns:
         raise ValueError(
-            f"scFv alignment must have {expected_columns} columns."
+            f"Multi-domain alignment must have {expected_columns} columns."
         )
 
     domains = []
@@ -307,7 +307,7 @@ def number_alignment(
             records = [
                 (
                     query_row,
-                    number + constants.IMGT_MAX_POSITION,
+                    number + domain_index * constants.IMGT_MAX_POSITION,
                     insertion_code,
                     amino_acid,
                 )
@@ -315,27 +315,32 @@ def number_alignment(
             ]
         domains.append(records)
 
-    first_domain, second_domain = domains
-    linker_start = first_domain[-1][0] + 1
-    linker_end = second_domain[0][0]
-    used_ids = {
-        (number, insertion_code)
-        for _, number, insertion_code, _ in first_domain
-    }
-    linker_number = first_domain[-1][1]
-    available_codes = (
-        code
-        for code in schemes.alphabet
-        if code.strip() and (linker_number, code) not in used_ids
-    )
-    linker = [
-        (query_row, linker_number, next(available_codes), sequence[query_row])
-        for query_row in range(linker_start, linker_end)
-    ]
-
-    records = [*first_domain, *linker, *second_domain]
+    records = list(domains[0])
+    for previous_domain, next_domain in zip(domains, domains[1:]):
+        linker_start = previous_domain[-1][0] + 1
+        linker_end = next_domain[0][0]
+        used_ids = {
+            (number, insertion_code)
+            for _, number, insertion_code, _ in previous_domain
+        }
+        linker_number = previous_domain[-1][1]
+        available_codes = (
+            code
+            for code in schemes.alphabet
+            if code.strip() and (linker_number, code) not in used_ids
+        )
+        records.extend(
+            (
+                query_row,
+                linker_number,
+                next(available_codes),
+                sequence[query_row],
+            )
+            for query_row in range(linker_start, linker_end)
+        )
+        records.extend(next_domain)
     LOGGER.info(
-        "Numbered %d residues as scFv %s using %s.",
+        "Numbered %d residues as multi-domain %s using %s.",
         len(records),
         chain_type,
         scheme,

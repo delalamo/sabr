@@ -33,7 +33,7 @@ def _gemmi_ids(structure, chain):
     ]
 
 
-def _stub_pipeline(monkeypatch, captured_modes=None):
+def _stub_pipeline(monkeypatch, captured_modes=None, captured_options=None):
     def fake_encode(coords, mode):
         if captured_modes is not None:
             captured_modes["encoder"] = mode
@@ -42,6 +42,8 @@ def _stub_pipeline(monkeypatch, captured_modes=None):
     def fake_align(embeddings, gaps, chain_type, noise, mode, scfv):
         if captured_modes is not None:
             captured_modes["alignment"] = mode
+        if captured_options is not None:
+            captured_options.update({"chain_type": chain_type, "scfv": scfv})
         return (
             np.zeros((len(embeddings), 128), dtype=int),
             "H" if chain_type == "auto" else chain_type,
@@ -176,6 +178,40 @@ def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
     }
 
 
+@pytest.mark.parametrize(
+    ("chain_type", "normalized"),
+    [
+        ("h, k", "H,K"),
+        ("HK,HL", "HK,HL"),
+        ("hhk, hhl", "HHK,HHL"),
+        ("H,H,K", "H,K"),
+    ],
+)
+def test_chain_type_accepts_ordered_domain_candidate_lists(
+    monkeypatch, chain_type, normalized
+):
+    captured = {}
+    _stub_pipeline(monkeypatch, captured_options=captured)
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    renumber_structure(structure, "F", chain_type=chain_type)
+    assert captured == {"chain_type": normalized, "scfv": False}
+
+
+def test_scfv_is_the_documented_chain_type_alias(monkeypatch):
+    captured = {}
+    _stub_pipeline(monkeypatch, captured_options=captured)
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    renumber_structure(structure, "F", scfv=True)
+    assert captured == {
+        "chain_type": "HK,HL,KH,LH",
+        "scfv": True,
+    }
+
+
 def test_missing_backbone_is_reported_with_the_residue():
     structure = PDBParser(QUIET=True).get_structure(
         "missing", DATA / "test_no_backbone.pdb"
@@ -222,6 +258,8 @@ def test_multiple_models_are_rejected():
     [
         ({"scheme": "unknown"}, "scheme"),
         ({"chain_type": "heavy"}, "chain_type"),
+        ({"chain_type": "H,,K"}, "chain_type"),
+        ({"chain_type": "auto,H"}, "chain_type"),
         ({"noise_level": 0.3}, "noise_level"),
         ({"residue_range": [1, 2]}, "residue_range"),
         ({"residue_range": (2, 1)}, "start"),
