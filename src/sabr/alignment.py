@@ -255,10 +255,6 @@ def _validate_multidomain_alignment(
             )
 
 
-# Kept as a private compatibility alias for callers of the former helper.
-_validate_scfv_alignment = _validate_multidomain_alignment
-
-
 def _concatenate_reference(references: dict, representation: str) -> tuple:
     """Build one ordered multi-domain reference from single domains."""
     domain_references = [references[domain] for domain in representation]

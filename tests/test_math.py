@@ -13,7 +13,7 @@ from sabr.alignment import (
     _alignment_path,
     _concatenate_reference,
     _terminal_gap_penalty,
-    _validate_scfv_alignment,
+    _validate_multidomain_alignment,
     align,
     load_gap_penalties,
     load_references,
@@ -161,7 +161,7 @@ def test_scfv_alignment_allows_an_unassigned_linker_between_domains():
     alignment[1, 1] = 1
     alignment[3, 128] = 1
     alignment[4, 129] = 1
-    _validate_scfv_alignment(alignment, "HK")
+    _validate_multidomain_alignment(alignment, "HK")
 
 
 def test_higher_order_reference_is_an_ordered_concatenation():
