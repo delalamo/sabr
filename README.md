@@ -39,8 +39,8 @@ sabr -i INPUT -c CHAIN -o OUTPUT
 ```
 
 Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
-`sabr` mode, and the entire selected chain. `--chain-type` accepts an ordered,
-comma-separated list of candidates. Each candidate is a sequence of `H`, `K`,
+`sabr` mode, and the entire selected chain. `--chain-type` accepts a
+comma-separated set of candidates. Each candidate is a sequence of `H`, `K`,
 and `L` domains: `H,K` tries heavy and kappa single domains, `HK,HL` tries
 heavy-kappa and heavy-lambda two-domain chains, and `HHK,HHL` tries the
 corresponding three-domain chains. Existing outputs are never replaced unless

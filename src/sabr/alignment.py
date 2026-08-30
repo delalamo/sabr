@@ -174,15 +174,14 @@ def load_references(
         )
 
     if scfv:
-        for representation in constants.SCFV_CHAIN_TYPES:
-            first_type, second_type = representation
+        for first_type, second_type in constants.SCFV_CHAIN_TYPES:
             first_embeddings, first_positions = references[first_type]
             second_embeddings, second_positions = references[second_type]
             embeddings = np.concatenate(
                 (first_embeddings, second_embeddings), axis=0
             )
             embeddings.flags.writeable = False
-            references[representation] = (
+            references[first_type + second_type] = (
                 embeddings,
                 (
                     *first_positions,
@@ -347,7 +346,7 @@ def align(
     references = dict(load_references(noise_level, mode, scfv=scfv))
     if chain_type == "auto":
         candidates = (
-            constants.SCFV_CANDIDATES if scfv else constants.CHAIN_TYPES
+            constants.SCFV_CHAIN_TYPES if scfv else constants.CHAIN_TYPES
         )
     else:
         candidates = tuple(chain_type.split(","))
@@ -408,7 +407,7 @@ def align(
             )
 
     _, score, selected_type, reduced, positions = best
-    domain_count = (max(positions) - 1) // constants.IMGT_MAX_POSITION + 1
+    domain_count = len(selected_type)
     full_alignment = np.zeros(
         (query.shape[0], domain_count * constants.IMGT_MAX_POSITION),
         dtype=reduced.dtype,

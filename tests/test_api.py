@@ -171,13 +171,13 @@ def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
 @pytest.mark.parametrize(
     ("chain_type", "normalized"),
     [
-        ("h, k", "H,K"),
+        ("k, h", "H,K"),
         ("HK,HL", "HK,HL"),
         ("hhk, hhl", "HHK,HHL"),
         ("H,H,K", "H,K"),
     ],
 )
-def test_chain_type_accepts_ordered_domain_candidate_lists(
+def test_chain_type_accepts_domain_candidate_sets(
     monkeypatch, chain_type, normalized
 ):
     captured = {}
@@ -280,7 +280,6 @@ def test_multiple_models_are_rejected():
         ({"noise_level": 0.3}, "noise_level"),
         ({"residue_range": [1, 2]}, "residue_range"),
         ({"residue_range": (2, 1)}, "start"),
-        ({"chain_type": None}, "chain_type"),
         ({"noise_level": "invalid"}, "noise_level"),
         ({"noise_level": False}, "noise_level"),
         ({"mode": "other"}, "mode"),

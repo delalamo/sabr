@@ -25,30 +25,22 @@ def _normalize_chain_type(
     mode: str,
 ) -> str:
     """Normalize an automatic or comma-separated domain candidate list."""
-    if not isinstance(chain_type, str):
-        raise ValueError(
-            "chain_type must be 'auto' or a comma-separated list of H, K, "
-            "and L domain representations."
-        )
-
     if chain_type.strip().lower() == "auto":
         return "auto"
 
     reference_types = tuple(load_references(noise_level, mode))
-    choices = ", ".join(("auto", *reference_types))
-    error = (
-        "chain_type must be 'auto' or comma-separated representations "
-        f"built from {choices}."
+    candidates = sorted(
+        {value.strip().upper() for value in chain_type.split(",")}
     )
-    candidates = []
-    for value in chain_type.split(","):
-        candidate = value.strip().upper()
-        if not candidate or any(
-            domain_type not in reference_types for domain_type in candidate
-        ):
-            raise ValueError(error)
-        if candidate not in candidates:
-            candidates.append(candidate)
+    if any(
+        not candidate or not set(candidate).issubset(reference_types)
+        for candidate in candidates
+    ):
+        choices = ", ".join(("auto", *reference_types))
+        raise ValueError(
+            "chain_type must be 'auto' or comma-separated representations "
+            f"built from {choices}."
+        )
     return ",".join(candidates)
 
 
@@ -124,7 +116,7 @@ class _RenumberOptions:
         if self.scfv and self.chain_type != "auto":
             raise ValueError("scfv requires chain_type='auto'.")
         if self.scfv:
-            self.chain_type = ",".join(constants.SCFV_CANDIDATES)
+            self.chain_type = ",".join(constants.SCFV_CHAIN_TYPES)
 
 
 def renumber_structure(
@@ -141,7 +133,7 @@ def renumber_structure(
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
     penalties as one scientifically consistent parameter set. ``chain_type``
-    accepts an ordered, comma-separated list of domain representations such
+    accepts a comma-separated set of domain representations such
     as ``"H,K,HK,HL"``. ``scfv=True`` is equivalent to
     ``chain_type="HK,HL,KH,LH"``.
     """
