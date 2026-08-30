@@ -21,7 +21,10 @@ def _rotate_for_dp(x, NINF, free_gap_boundary=-1):
     br = jnp.arange(b)[None, :]
     i, j = (br - ar) + (a - 1), (ar + br) // 2
     n, m = (a + b - 1), (a + b) // 2
-    free_gap = jnp.broadcast_to(br == free_gap_boundary, (a, b))
+    boundaries = jnp.atleast_1d(jnp.asarray(free_gap_boundary))
+    free_gap = jnp.broadcast_to(
+        jnp.any(br[..., None] == boundaries, axis=-1), (a, b)
+    )
     output = {
         "x": jnp.full([n, m], NINF).at[i, j].set(x),
         "o": (jnp.arange(n) + a % 2) % 2,
@@ -75,7 +78,7 @@ def _affine_score(
     free_gap_boundary=-1,
     NINF=-1e30,
 ):
-    """Return a score, optionally making one reference gap boundary free."""
+    """Return a score, optionally making reference gap boundaries free."""
     right_penalties = jnp.asarray(
         [
             gap_open,
@@ -171,15 +174,14 @@ def load_references(
         )
 
     if scfv:
-        for representation in constants.SCFV_CHAIN_TYPES:
-            first_type, second_type = representation.split(":")
+        for first_type, second_type in constants.SCFV_CHAIN_TYPES:
             first_embeddings, first_positions = references[first_type]
             second_embeddings, second_positions = references[second_type]
             embeddings = np.concatenate(
                 (first_embeddings, second_embeddings), axis=0
             )
             embeddings.flags.writeable = False
-            references[representation] = (
+            references[first_type + second_type] = (
                 embeddings,
                 (
                     *first_positions,
@@ -229,35 +231,51 @@ def _alignment_path(alignment: np.ndarray) -> np.ndarray:
     return path
 
 
-def _validate_scfv_alignment(
+def _validate_multidomain_alignment(
     alignment: np.ndarray, representation: str
 ) -> None:
-    """Validate two ordered IMGT-domain blocks with an optional linker."""
-    expected_columns = 2 * constants.IMGT_MAX_POSITION
+    """Validate ordered IMGT-domain blocks with optional linkers."""
+    expected_columns = len(representation) * constants.IMGT_MAX_POSITION
     if alignment.ndim != 2 or alignment.shape[1] != expected_columns:
         raise ValueError(
-            f"scFv alignment must have {expected_columns} columns."
+            f"Multi-domain alignment must have {expected_columns} columns."
         )
     _alignment_path(alignment)
 
-    for domain_index, chain_type in enumerate(representation.split(":")):
+    for domain_index, chain_type in enumerate(representation):
         start = domain_index * constants.IMGT_MAX_POSITION
         end = start + constants.IMGT_MAX_POSITION
         domain = alignment[:, start:end]
         assigned_rows = np.flatnonzero(domain.sum(axis=1))
         if not len(assigned_rows):
             raise ValueError(
-                f"scFv {chain_type} domain contains no assigned residues."
+                f"Multi-domain {chain_type} domain {domain_index + 1} "
+                "contains no assigned residues."
             )
+
+
+def _concatenate_reference(references: dict, representation: str) -> tuple:
+    """Build one ordered multi-domain reference from single domains."""
+    domain_references = [references[domain] for domain in representation]
+    embeddings = np.concatenate(
+        [reference[0] for reference in domain_references], axis=0
+    )
+    embeddings.flags.writeable = False
+    positions = tuple(
+        position + domain_index * constants.IMGT_MAX_POSITION
+        for domain_index, (_, domain_positions) in enumerate(domain_references)
+        for position in domain_positions
+    )
+    return embeddings, positions
 
 
 def _align_reference(
     query: np.ndarray,
     reference: np.ndarray,
     mode: str = "sabr",
-    free_gap_boundary: int = -1,
+    free_gap_boundary: int | tuple[int, ...] = -1,
 ):
-    """Align one reference, optionally allowing a free query insertion."""
+    """Align one reference, optionally allowing free query insertions."""
     anchor = np.zeros((1, reference.shape[1]), dtype=reference.dtype)
     augmented_reference = np.concatenate((anchor, reference, anchor), axis=0)
     query_batch = jnp.asarray(query[None, :])
@@ -325,21 +343,33 @@ def align(
     scfv: bool = False,
 ) -> tuple:
     """Align query embeddings and return corrected IMGT alignment metadata."""
-    references = load_references(noise_level, mode, scfv=scfv)
-    candidates = tuple(references) if chain_type == "auto" else (chain_type,)
+    references = dict(load_references(noise_level, mode, scfv=scfv))
+    if chain_type == "auto":
+        candidates = (
+            constants.SCFV_CHAIN_TYPES if scfv else constants.CHAIN_TYPES
+        )
+    else:
+        candidates = tuple(chain_type.split(","))
     best = None
     for candidate in candidates:
+        if candidate not in references:
+            references[candidate] = _concatenate_reference(
+                references, candidate
+            )
         reference, positions = references[candidate]
-        if ":" in candidate:
-            free_gap_boundary = sum(
-                position <= constants.IMGT_MAX_POSITION
-                for position in positions
+        if len(candidate) > 1:
+            free_gap_boundaries = tuple(
+                sum(
+                    position <= domain_index * constants.IMGT_MAX_POSITION
+                    for position in positions
+                )
+                for domain_index in range(1, len(candidate))
             )
             reduced, similarity, score = _align_reference(
                 query,
                 reference,
                 mode,
-                free_gap_boundary=free_gap_boundary,
+                free_gap_boundary=free_gap_boundaries,
             )
         else:
             reduced, similarity, score = _align_reference(
@@ -354,7 +384,7 @@ def align(
                 f"{candidate} reference produced a non-finite alignment."
             )
         selection_score = score
-        if ":" in candidate:
+        if len(candidate) > 1:
             terminal_penalty = _terminal_gap_penalty(reduced, mode)
             selection_score += terminal_penalty
             LOGGER.info(
@@ -377,23 +407,23 @@ def align(
             )
 
     _, score, selected_type, reduced, positions = best
-    domain_count = (max(positions) - 1) // constants.IMGT_MAX_POSITION + 1
+    domain_count = len(selected_type)
     full_alignment = np.zeros(
         (query.shape[0], domain_count * constants.IMGT_MAX_POSITION),
         dtype=reduced.dtype,
     )
     full_alignment[:, np.asarray(positions) - 1] = reduced
     full_alignment = np.round(full_alignment).astype(int)
-    if ":" in selected_type:
+    if len(selected_type) > 1:
         corrected = full_alignment.copy()
-        for domain_index, _ in enumerate(selected_type.split(":")):
+        for domain_index, _ in enumerate(selected_type):
             start = domain_index * constants.IMGT_MAX_POSITION
             end = start + constants.IMGT_MAX_POSITION
             corrected[:, start:end] = apply_corrections(
                 corrected[:, start:end],
                 gap_indices=gap_indices,
             )
-        _validate_scfv_alignment(corrected, selected_type)
+        _validate_multidomain_alignment(corrected, selected_type)
     else:
         corrected = apply_corrections(full_alignment, gap_indices=gap_indices)
         _alignment_path(corrected)

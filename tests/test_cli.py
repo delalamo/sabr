@@ -144,6 +144,29 @@ def test_cli_forwards_scfv_mode(monkeypatch, tmp_path):
     assert captured["scfv"] is True
 
 
+@pytest.mark.parametrize("chain_type", ("H,K", "HK,HL", "HHK,HHL"))
+def test_cli_forwards_comma_separated_domain_candidates(
+    monkeypatch, tmp_path, chain_type
+):
+    captured = {}
+    monkeypatch.setattr(cli, "renumber_structure", _passthrough(captured))
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(tmp_path / f"{chain_type.replace(',', '-')}.pdb"),
+            "--chain-type",
+            chain_type,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["chain_type"] == chain_type
+
+
 def test_cli_overwrite_protection(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "renumber_structure", _passthrough())
     output = tmp_path / "exists.pdb"
@@ -270,7 +293,7 @@ def test_real_cli_round_trip(monkeypatch, tmp_path):
             "-o",
             str(output),
             "-t",
-            "H",
+            "H,K",
         ],
     )
     assert result.exit_code == 0, result.output

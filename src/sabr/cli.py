@@ -113,8 +113,11 @@ def _write_structure(structure, path: Path) -> None:
     "--chain-type",
     default="auto",
     show_default=True,
-    type=click.Choice(("auto", *constants.CHAIN_TYPES), case_sensitive=True),
-    help="Reference and ANARCI chain type.",
+    metavar="TYPES",
+    help=(
+        "Comma-separated reference domain representations, such as H,K or "
+        "HK,HL."
+    ),
 )
 @click.option(
     "--noise-level",
@@ -136,7 +139,7 @@ def _write_structure(structure, path: Path) -> None:
 @click.option(
     "--scfv",
     is_flag=True,
-    help="Also try H:K, H:L, K:H, and L:H composite references.",
+    help="Equivalent to --chain-type HK,HL,KH,LH.",
 )
 @click.option(
     "--no-mmcif",

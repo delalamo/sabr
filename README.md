@@ -29,7 +29,7 @@ The complete interface is:
 ```text
 sabr -i INPUT -c CHAIN -o OUTPUT
      [-n imgt|chothia|kabat|martin|aho|wolfguy]
-     [-t auto|H|K|L]
+     [-t auto|TYPES]
      [--noise-level 0.0|0.2|0.5|1.0|2.0]
      [-m sabr|softalign]
      [--residue-range START END]
@@ -39,21 +39,24 @@ sabr -i INPUT -c CHAIN -o OUTPUT
 ```
 
 Defaults are IMGT numbering, automatic H/K/L selection, noise level `0.0`,
-`sabr` mode, and the entire selected chain. Existing outputs are never
-replaced unless `--overwrite` is given. Normal output contains only warnings
-and errors; `-v` reports reference scores and pipeline decisions.
+`sabr` mode, and the entire selected chain. `--chain-type` accepts a
+comma-separated set of candidates. Each candidate is a sequence of `H`, `K`,
+and `L` domains: `H,K` tries heavy and kappa single domains, `HK,HL` tries
+heavy-kappa and heavy-lambda two-domain chains, and `HHK,HHL` tries the
+corresponding three-domain chains. Existing outputs are never replaced unless
+`--overwrite` is given. Normal output contains only warnings and errors; `-v`
+reports reference scores and pipeline decisions.
 
 Use `--mode softalign` to select the original SoftAlign encoder weights,
 reference embeddings, and affine gap penalties together. SoftAlign references
 do not vary with `--noise-level`, so that option is ignored in this mode.
 
-Use `--scfv` for a single chain containing two linked variable domains. In
-addition to the H, K, and L references, this mode tries the concatenated H:K,
-H:L, K:H, and L:H representations. The second domain is numbered with a 128
-offset so both domains have unique residue IDs in one structure chain; linker
-residues use insertion codes after the first domain. Because each composite
-already specifies both domain types, scFv mode requires automatic chain type.
-Composite references use the selected parameter mode, so `--scfv` can be
+Use `--scfv` to search only the scFv candidate set. It is equivalent to
+`--chain-type HK,HL,KH,LH` and still requires the default automatic chain type
+when used as a flag. Multi-domain results place successive domains in separate
+1000-number residue blocks: `1–128`, `1001–1128`, `2001–2128`, and so on.
+Linker residues continue sequentially from the preceding domain's last number.
+Multi-domain references use the selected parameter mode, so either form can be
 combined with `--mode softalign`.
 
 Input and output may be PDB (`.pdb`) or mmCIF (`.cif` or `.mmcif`). When a
@@ -118,12 +121,14 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
 - No deterministic C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
-- scFv mode appends H:K, H:L, K:H, and L:H reference candidates in that order.
-- Composite candidates do not apply gap-open or gap-extension costs to query
-  linker residues aligned at the boundary between their two references.
-- Composite candidates receive normal affine gap-open and gap-extension costs
-  for unaligned query and reference termini when their selection scores are
-  compared; the underlying alignments and raw alignment scores are unchanged.
+- `chain_type` candidate order is deterministic and resolves score ties.
+- scFv mode searches only the `HK,HL,KH,LH` candidate list in that order.
+- Multi-domain candidates do not apply gap-open or gap-extension costs to
+  query linker residues aligned at any boundary between domain references.
+- Multi-domain candidates receive normal affine gap-open and gap-extension
+  costs for unaligned query and reference termini when their selection scores
+  are compared; the underlying alignments and raw alignment scores are
+  unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
 residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop

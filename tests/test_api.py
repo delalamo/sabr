@@ -21,7 +21,7 @@ def _bio_ids(structure, chain):
     ]
 
 
-def _stub_pipeline(monkeypatch, captured_modes=None):
+def _stub_pipeline(monkeypatch, captured_modes=None, captured_options=None):
     def fake_encode(coords, mode):
         if captured_modes is not None:
             captured_modes["encoder"] = mode
@@ -30,6 +30,8 @@ def _stub_pipeline(monkeypatch, captured_modes=None):
     def fake_align(embeddings, gaps, chain_type, noise, mode, scfv):
         if captured_modes is not None:
             captured_modes["alignment"] = mode
+        if captured_options is not None:
+            captured_options.update({"chain_type": chain_type, "scfv": scfv})
         return (
             np.zeros((len(embeddings), 128), dtype=int),
             "H" if chain_type == "auto" else chain_type,
@@ -166,7 +168,41 @@ def test_softalign_mode_is_forwarded_to_encoder_and_alignment(monkeypatch):
     }
 
 
-def test_chain_type_choices_come_from_reference_asset(monkeypatch):
+@pytest.mark.parametrize(
+    ("chain_type", "normalized"),
+    [
+        ("k, h", "H,K"),
+        ("HK,HL", "HK,HL"),
+        ("hhk, hhl", "HHK,HHL"),
+        ("H,H,K", "H,K"),
+    ],
+)
+def test_chain_type_accepts_domain_candidate_sets(
+    monkeypatch, chain_type, normalized
+):
+    captured = {}
+    _stub_pipeline(monkeypatch, captured_options=captured)
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    renumber_structure(structure, "F", chain_type=chain_type)
+    assert captured == {"chain_type": normalized, "scfv": False}
+
+
+def test_scfv_is_the_documented_chain_type_alias(monkeypatch):
+    captured = {}
+    _stub_pipeline(monkeypatch, captured_options=captured)
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    renumber_structure(structure, "F", scfv=True)
+    assert captured == {
+        "chain_type": "HK,HL,KH,LH",
+        "scfv": True,
+    }
+
+
+def test_chain_type_domain_choices_come_from_reference_asset(monkeypatch):
     monkeypatch.setattr(
         api,
         "load_references",
@@ -239,10 +275,11 @@ def test_multiple_models_are_rejected():
     [
         ({"scheme": "unknown"}, "scheme"),
         ({"chain_type": "heavy"}, "chain_type"),
+        ({"chain_type": "H,,K"}, "chain_type"),
+        ({"chain_type": "auto,H"}, "chain_type"),
         ({"noise_level": 0.3}, "noise_level"),
         ({"residue_range": [1, 2]}, "residue_range"),
         ({"residue_range": (2, 1)}, "start"),
-        ({"chain_type": None}, "chain_type"),
         ({"noise_level": "invalid"}, "noise_level"),
         ({"noise_level": False}, "noise_level"),
         ({"mode": "other"}, "mode"),

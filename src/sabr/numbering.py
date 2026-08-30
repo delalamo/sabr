@@ -7,7 +7,6 @@ from importlib.resources import files
 import numpy as np
 
 from sabr import constants
-from sabr._anarci.schemes import alphabet as _anarci_insertion_codes
 from sabr._anarci.schemes import (
     number_aho,
     number_chothia_heavy,
@@ -307,27 +306,28 @@ def number_alignment(
     """Return query-row-to-number records for one alignment.
 
     ``ref_type`` and ``ref_positions`` are opt-in metadata for reduced
-    single-domain references. Normal 128-column antibody and 256-column scFv
+    single-domain references. Normal full-width single- and multi-domain
     alignments leave them unset.
     """
-    chain_types = chain_type.split(":")
-    is_composite = len(chain_types) > 1
-    if is_composite and (ref_type is not None or ref_positions is not None):
+    chain_types = tuple(chain_type)
+    is_multidomain = len(chain_types) > 1
+    if is_multidomain and (ref_type is not None or ref_positions is not None):
         raise ValueError(
             "Reference metadata is supported only for single-domain "
             "alignments."
         )
 
-    if is_composite:
+    if is_multidomain:
         expected_columns = len(chain_types) * constants.IMGT_MAX_POSITION
         if alignment.ndim != 2 or alignment.shape[1] != expected_columns:
             raise ValueError(
-                f"scFv alignment must have {expected_columns} columns."
+                f"Multi-domain alignment must have {expected_columns} "
+                "columns."
             )
 
     domains = []
     for domain_index, domain_type in enumerate(chain_types):
-        if is_composite:
+        if is_multidomain:
             start = domain_index * constants.IMGT_MAX_POSITION
             end = start + constants.IMGT_MAX_POSITION
             domain_alignment = alignment[:, start:end]
@@ -342,7 +342,7 @@ def number_alignment(
             ref_positions=ref_positions,
         )
         if domain_index:
-            number_offset = domain_index * constants.IMGT_MAX_POSITION
+            number_offset = domain_index * constants.DOMAIN_NUMBERING_STRIDE
             records = [
                 (
                     query_row,
@@ -354,30 +354,27 @@ def number_alignment(
             ]
         domains.append(records)
 
-    if not is_composite:
+    if not is_multidomain:
         return domains[0]
 
-    first_domain, second_domain = domains
-    linker_start = first_domain[-1][0] + 1
-    linker_end = second_domain[0][0]
-    used_ids = {
-        (number, insertion_code)
-        for _, number, insertion_code, _ in first_domain
-    }
-    linker_number = first_domain[-1][1]
-    available_codes = (
-        code
-        for code in _anarci_insertion_codes
-        if code.strip() and (linker_number, code) not in used_ids
-    )
-    linker = [
-        (query_row, linker_number, next(available_codes), sequence[query_row])
-        for query_row in range(linker_start, linker_end)
-    ]
-
-    records = [*first_domain, *linker, *second_domain]
+    records = list(domains[0])
+    for previous_domain, next_domain in zip(domains, domains[1:]):
+        linker_start = previous_domain[-1][0] + 1
+        linker_end = next_domain[0][0]
+        records.extend(
+            (
+                query_row,
+                previous_domain[-1][1] + linker_index,
+                "",
+                sequence[query_row],
+            )
+            for linker_index, query_row in enumerate(
+                range(linker_start, linker_end), start=1
+            )
+        )
+        records.extend(next_domain)
     LOGGER.info(
-        "Numbered %d residues as scFv %s using %s.",
+        "Numbered %d residues as multi-domain %s using %s.",
         len(records),
         chain_type,
         scheme,
