@@ -24,17 +24,32 @@ def _normalize_chain_type(
     noise_level: float,
     mode: str,
 ) -> str:
+    """Normalize a TCR type or antibody domain candidate list."""
     if not isinstance(chain_type, str):
-        raise ValueError("chain_type must be a reference type or 'auto'.")
-    normalized = "auto" if chain_type.lower() == "auto" else chain_type.upper()
-    if normalized == "auto":
+        raise ValueError("chain_type must be a supported type or 'auto'.")
+
+    normalized = chain_type.strip().upper()
+    if normalized == "AUTO":
+        return "auto"
+    if normalized in constants.TCR_CHAIN_TYPES:
         return normalized
 
     reference_types = tuple(load_references(noise_level, mode))
-    if normalized not in reference_types:
+    candidates = sorted(
+        {value.strip().upper() for value in chain_type.split(",")}
+    )
+    if any(
+        not candidate or not set(candidate).issubset(reference_types)
+        for candidate in candidates
+    ):
         choices = ", ".join(("auto", *reference_types))
-        raise ValueError(f"chain_type must be one of {choices}.")
-    return normalized
+        tcr_choices = ", ".join(constants.TCR_CHAIN_TYPES)
+        raise ValueError(
+            "chain_type must be a TCR type or comma-separated antibody "
+            f"representations built from {choices}; TCR types are "
+            f"{tcr_choices}."
+        )
+    return ",".join(candidates)
 
 
 def _normalize_noise_level(noise_level: float) -> float:
@@ -60,11 +75,10 @@ def _validate_residue_range(
 ) -> None:
     """Validate inclusive structure residue-number bounds.
 
-    The bounds are compared with BioPython ``residue.id[1]`` or Gemmi
-    ``residue.seqid.num``. They are residue numbers from the input structure,
-    not zero-based sequence or array indices, and need not begin at one or be
-    contiguous. Every insertion-code variant sharing a selected residue number
-    is included.
+    The bounds are compared with BioPython ``residue.id[1]``. They are residue
+    numbers from the input structure, not zero-based sequence or array indices,
+    and need not begin at one or be contiguous. Every insertion-code variant
+    sharing a selected residue number is included.
     """
     if residue_range is None:
         return
@@ -114,6 +128,8 @@ class _RenumberOptions:
             raise ValueError(
                 "dangerously_allow_structural_gaps must be a boolean."
             )
+        if self.scfv:
+            self.chain_type = ",".join(constants.SCFV_CHAIN_TYPES)
 
 
 def renumber_structure(
@@ -130,10 +146,13 @@ def renumber_structure(
     """Return a renumbered copy of a Biopython structure.
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
-    penalties as one scientifically consistent parameter set. ``scfv=True``
-    adds the four supported two-domain composite references. Structural gaps
-    are rejected before model execution unless
-    ``dangerously_allow_structural_gaps=True`` is explicitly supplied.
+    penalties as one scientifically consistent parameter set. ``chain_type``
+    accepts a comma-separated set of antibody domain representations such
+    as ``"H,K,HK,HL"``, or one TCR type from ``"A,B,G,D"``. TCR types align
+    only against the K reference. ``scfv=True`` is equivalent to
+    ``chain_type="HK,HL,KH,LH"``. Structural gaps are rejected before model
+    execution unless ``dangerously_allow_structural_gaps=True`` is explicitly
+    supplied.
     """
     options = _RenumberOptions(
         scheme=scheme,
@@ -168,10 +187,15 @@ def renumber_structure(
         selected_type,
         score,
     )
+    numbering_type = (
+        options.chain_type
+        if options.chain_type in constants.TCR_CHAIN_TYPES
+        else selected_type
+    )
     numbered = number_alignment(
         imgt_alignment,
         data.sequence,
         options.scheme,
-        selected_type,
+        numbering_type,
     )
     return apply_numbering(structure, chain, data, numbered)

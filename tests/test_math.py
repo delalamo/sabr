@@ -11,8 +11,9 @@ from sabr.alignment import (
     _affine_score,
     _align_reference,
     _alignment_path,
+    _concatenate_reference,
     _terminal_gap_penalty,
-    _validate_scfv_alignment,
+    _validate_multidomain_alignment,
     align,
     load_gap_penalties,
     load_references,
@@ -136,7 +137,7 @@ def test_scfv_references_are_exact_ordered_concatenations(mode, noise_level):
         *constants.SCFV_CHAIN_TYPES,
     )
     for representation in constants.SCFV_CHAIN_TYPES:
-        first_type, second_type = representation.split(":")
+        first_type, second_type = representation
         embeddings, positions = references[representation]
         first_embeddings, first_positions = references[first_type]
         second_embeddings, second_positions = references[second_type]
@@ -160,7 +161,27 @@ def test_scfv_alignment_allows_an_unassigned_linker_between_domains():
     alignment[1, 1] = 1
     alignment[3, 128] = 1
     alignment[4, 129] = 1
-    _validate_scfv_alignment(alignment, "H:K")
+    _validate_multidomain_alignment(alignment, "HK")
+
+
+def test_higher_order_reference_is_an_ordered_concatenation():
+    references = load_references(0.0)
+    embeddings, positions = _concatenate_reference(references, "HHK")
+    expected_embeddings = np.concatenate(
+        (
+            references["H"][0],
+            references["H"][0],
+            references["K"][0],
+        ),
+        axis=0,
+    )
+    np.testing.assert_array_equal(embeddings, expected_embeddings)
+    assert positions == tuple(
+        position + domain_index * constants.IMGT_MAX_POSITION
+        for domain_index, domain_type in enumerate("HHK")
+        for position in references[domain_type][1]
+    )
+    assert not embeddings.flags.writeable
 
 
 @pytest.mark.parametrize("linker_length", (1, 3))
@@ -193,6 +214,34 @@ def test_scfv_reference_boundary_has_no_affine_linker_penalty(linker_length):
     expected_penalty = gap_open + (linker_length - 1) * gap_extend
     assert float(penalized) == pytest.approx(20.0 + expected_penalty)
     assert float(free) == pytest.approx(20.0)
+
+
+def test_higher_order_reference_makes_every_linker_boundary_free():
+    similarities = np.full((5, 5), -100.0, dtype=np.float32)
+    similarities[:, (0, 4)] = 0.0
+    similarities[0, 1] = 10.0
+    similarities[2, 2] = 10.0
+    similarities[4, 3] = 10.0
+    lengths = np.asarray(similarities.shape)
+
+    penalized = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend=-1.0,
+        gap_open=-3.0,
+    )
+    free = _affine_score(
+        similarities,
+        lengths,
+        1e-4,
+        gap_extend=-1.0,
+        gap_open=-3.0,
+        free_gap_boundary=(1, 2),
+    )
+
+    assert float(penalized) == pytest.approx(24.0)
+    assert float(free) == pytest.approx(30.0)
 
 
 def test_softalign_mode_loads_its_complete_parameter_set():
@@ -303,6 +352,34 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     assert seen == [constants.CHAIN_TYPES.index(chain_type)]
 
 
+@pytest.mark.parametrize("chain_type", constants.TCR_CHAIN_TYPES)
+def test_tcr_chain_type_aligns_only_kappa_reference(monkeypatch, chain_type):
+    references = {
+        candidate: (np.full((1, 64), index), [1])
+        for index, candidate in enumerate(constants.CHAIN_TYPES)
+    }
+    seen = []
+
+    def fake_align(query, reference, mode):
+        seen.append(int(reference[0, 0]))
+        return np.ones((len(query), 1)), np.zeros((len(query), 3)), 1.0
+
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise, mode, scfv=False: references,
+    )
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, gap_indices: alignment,
+    )
+
+    _, selected, _ = align(np.zeros((1, 64)), frozenset(), chain_type, 0.0)
+
+    assert selected == "K"
+    assert seen == [constants.CHAIN_TYPES.index("K")]
+
+
 def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     representations = (
         *constants.CHAIN_TYPES,
@@ -310,7 +387,7 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     )
     references = {}
     for index, representation in enumerate(representations):
-        domain_count = 2 if ":" in representation else 1
+        domain_count = len(representation)
         references[representation] = (
             np.full((domain_count, 64), index),
             [1, 129] if domain_count == 2 else [1],
@@ -324,7 +401,10 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
         marker = int(reference[0, 0])
         representation = representations[marker]
         seen_boundaries[representation] = free_gap_boundary
-        score = 10.0 if representation == "H:K" else 1.0
+        if representation == "H":
+            score = 100.0
+        else:
+            score = 10.0 if representation == "HK" else 1.0
         return reduced, np.zeros((len(query), len(reference) + 2)), score
 
     corrected_shapes = []
@@ -343,19 +423,50 @@ def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     alignment, selected, score = align(
         np.zeros((2, 64)), frozenset(), "auto", 0.0, scfv=True
     )
-    assert selected == "H:K"
+    assert selected == "HK"
     assert score == 10.0
     assert alignment.shape == (2, 256)
     assert corrected_shapes == [(2, 128), (2, 128)]
     assert seen_boundaries == {
-        "H": -1,
-        "K": -1,
-        "L": -1,
-        "H:K": 1,
-        "H:L": 1,
-        "K:H": 1,
-        "L:H": 1,
+        "HK": (1,),
+        "HL": (1,),
+        "KH": (1,),
+        "LH": (1,),
     }
+
+
+def test_requested_candidates_and_higher_order_boundaries_are_exact(
+    monkeypatch,
+):
+    references = {
+        "H": (np.zeros((1, 64)), (1,)),
+        "K": (np.ones((1, 64)), (1,)),
+        "L": (np.full((1, 64), 2), (1,)),
+    }
+    seen = []
+
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
+        seen.append((int(reference[0, 0]), free_gap_boundary))
+        reduced = np.zeros((len(query), len(reference)))
+        np.fill_diagonal(reduced, 1)
+        return reduced, np.zeros((len(query), len(reference) + 2)), 1.0
+
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise, mode, scfv=False: references,
+    )
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, gap_indices: alignment,
+    )
+
+    alignment, selected, _ = align(
+        np.zeros((3, 64)), frozenset(), "HHK,HHL", 0.0
+    )
+    assert selected == "HHK"
+    assert alignment.shape == (3, 3 * constants.IMGT_MAX_POSITION)
+    assert seen == [(0, (1, 2)), (0, (1, 2))]
 
 
 def test_terminal_gap_penalty_uses_normal_affine_gap_costs():
@@ -372,12 +483,12 @@ def test_terminal_gap_penalty_uses_normal_affine_gap_costs():
     )
 
 
-def test_scfv_terminal_penalty_is_used_only_for_candidate_selection(
+def test_multidomain_terminal_penalty_is_used_only_for_candidate_selection(
     monkeypatch,
 ):
     references = {
         "H": (np.zeros((1, 64)), [1]),
-        "H:K": (np.ones((4, 64)), [1, 2, 129, 130]),
+        "HK": (np.ones((4, 64)), [1, 2, 129, 130]),
     }
 
     def fake_align(query, reference, mode, free_gap_boundary=-1):
@@ -400,7 +511,7 @@ def test_scfv_terminal_penalty_is_used_only_for_candidate_selection(
     )
 
     alignment, selected, score = align(
-        np.zeros((1, 64)), frozenset(), "auto", 0.0, scfv=True
+        np.zeros((1, 64)), frozenset(), "H,HK", 0.0
     )
     assert selected == "H"
     assert score == 8.0

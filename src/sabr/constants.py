@@ -31,7 +31,8 @@ SW_GAP_OPEN = -2.525591
 # SoftAlign params
 DEFAULT_TEMPERATURE = 1e-4
 CHAIN_TYPES = ("H", "K", "L")
-SCFV_CHAIN_TYPES = ("H:K", "H:L", "K:H", "L:H")
+TCR_CHAIN_TYPES = ("A", "B", "G", "D")
+SCFV_CHAIN_TYPES = ("HK", "HL", "KH", "LH")
 NOISE_LEVELS = (0.0, 0.2, 0.5, 1.0, 2.0)
 MODES = ("sabr", "softalign")
 NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
@@ -40,6 +41,7 @@ NUMBERING_SCHEMES = ("imgt", "chothia", "kabat", "martin", "aho", "wolfguy")
 # IMGT constants
 
 IMGT_MAX_POSITION = 128
+DOMAIN_NUMBERING_STRIDE = 1000
 
 # CDR loop definitions (inclusive)
 IMGT_LOOPS = {
