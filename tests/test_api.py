@@ -7,7 +7,7 @@ from Bio.PDB import Atom, Chain, PDBParser, Residue
 from Bio.PDB.Structure import Structure
 
 import sabr.api as api
-from sabr import renumber_structure
+from sabr import constants, renumber_structure
 from sabr.structure import extract_chain
 
 DATA = Path(__file__).parent / "data"
@@ -227,6 +227,42 @@ def test_chain_type_domain_choices_come_from_reference_asset(monkeypatch):
             mode="sabr",
             scfv=False,
         )
+
+
+@pytest.mark.parametrize("chain_type", constants.TCR_CHAIN_TYPES)
+def test_tcr_chain_uses_k_reference_and_actual_numbering_type(
+    monkeypatch, chain_type
+):
+    structure = PDBParser(QUIET=True).get_structure(
+        "heavy", DATA / "test_heavy_chain.pdb"
+    )
+    captured = {}
+    monkeypatch.setattr(
+        api,
+        "encode",
+        lambda coords, mode: np.zeros((len(coords), 64)),
+    )
+
+    def fake_align(embeddings, gaps, requested_type, noise, mode, scfv):
+        captured["alignment_type"] = requested_type
+        return np.zeros((len(embeddings), 128), dtype=int), "K", 0.0
+
+    def fake_number(alignment, sequence, scheme, numbering_type):
+        captured["numbering_type"] = numbering_type
+        return [
+            (index, index + 1, "", amino_acid)
+            for index, amino_acid in enumerate(sequence)
+        ]
+
+    monkeypatch.setattr(api, "align", fake_align)
+    monkeypatch.setattr(api, "number_alignment", fake_number)
+
+    renumber_structure(structure, "F", chain_type=chain_type.lower())
+
+    assert captured == {
+        "alignment_type": chain_type,
+        "numbering_type": chain_type,
+    }
 
 
 def test_missing_backbone_is_reported_with_the_residue():

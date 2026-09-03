@@ -48,11 +48,10 @@ def _load_missing_imgt_positions() -> dict[str, frozenset[int]]:
 
 
 # These are ANARCI's T-cell receptor chain labels. The public SAbR pipeline
-# supports antibody references H/K/L; A/B/G/D are accepted only by the
-# low-level numbering conversion for the experimental TCR workflow documented
-# in the README. Of the vendored ANARCI schemes, only IMGT and AHo define TCR
-# behavior (and AHo needs the actual TCR chain label).
-_TCR_CHAIN_TYPES = frozenset({"A", "B", "G", "D"})
+# aligns them against K but retains the actual label for numbering. Of the
+# vendored ANARCI schemes, only IMGT and AHo define TCR behavior (and AHo needs
+# the actual TCR chain label).
+_TCR_CHAIN_TYPES = frozenset(constants.TCR_CHAIN_TYPES)
 
 
 def _validate_reference_positions(

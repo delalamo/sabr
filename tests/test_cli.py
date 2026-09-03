@@ -124,6 +124,29 @@ def test_cli_accepts_every_reference_noise_level(
     assert captured["noise_level"] == float(noise_level)
 
 
+@pytest.mark.parametrize("chain_type", ("A", "B", "G", "D"))
+def test_cli_accepts_tcr_chain_types(monkeypatch, tmp_path, chain_type):
+    captured = {}
+    monkeypatch.setattr(cli, "renumber_structure", _passthrough(captured))
+    output = tmp_path / f"tcr-{chain_type}.pdb"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "test_heavy_chain.pdb"),
+            "-c",
+            "F",
+            "-o",
+            str(output),
+            "--chain-type",
+            chain_type,
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["chain_type"] == chain_type
+
+
 def test_cli_forwards_scfv_mode(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(cli, "renumber_structure", _passthrough(captured))

@@ -163,13 +163,12 @@ Unknown or ambiguous polymer chemistry is rejected rather than converted to
 
 ## Experimental TCR use
 
-T-cell receptors are not an officially supported SAbR target. Experimental
-users of the low-level alignment and numbering modules should align TCRs
-against the K reference because it includes IMGT position 10, as TCRs do.
-Pass the actual TCR chain type (`A`, `B`, `G`, or `D`) only to the ANARCI
-conversion step, together with `ref_type="K"`. This workaround supports IMGT
-and AHo numbering only; Chothia, Kabat, Martin, and Wolfguy are
-antibody-specific.
+T-cell receptors are not an officially supported SAbR target. For
+experimental use, pass the actual TCR chain type (`A`, `B`, `G`, or `D`) as
+`--chain-type` or `chain_type`. SAbR aligns only against the K reference,
+which includes IMGT position 10 as TCRs do, while retaining the TCR type for
+ANARCI conversion. This workflow supports IMGT and AHo numbering only;
+Chothia, Kabat, Martin, and Wolfguy are antibody-specific.
 
 ## Errors
 

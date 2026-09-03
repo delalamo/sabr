@@ -348,6 +348,8 @@ def align(
         candidates = (
             constants.SCFV_CHAIN_TYPES if scfv else constants.CHAIN_TYPES
         )
+    elif chain_type in constants.TCR_CHAIN_TYPES:
+        candidates = ("K",)
     else:
         candidates = tuple(chain_type.split(","))
     best = None

@@ -352,6 +352,34 @@ def test_explicit_chain_type_aligns_only_its_reference(monkeypatch, chain_type):
     assert seen == [constants.CHAIN_TYPES.index(chain_type)]
 
 
+@pytest.mark.parametrize("chain_type", constants.TCR_CHAIN_TYPES)
+def test_tcr_chain_type_aligns_only_kappa_reference(monkeypatch, chain_type):
+    references = {
+        candidate: (np.full((1, 64), index), [1])
+        for index, candidate in enumerate(constants.CHAIN_TYPES)
+    }
+    seen = []
+
+    def fake_align(query, reference, mode):
+        seen.append(int(reference[0, 0]))
+        return np.ones((len(query), 1)), np.zeros((len(query), 3)), 1.0
+
+    monkeypatch.setattr(
+        "sabr.alignment.load_references",
+        lambda noise, mode, scfv=False: references,
+    )
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, gap_indices: alignment,
+    )
+
+    _, selected, _ = align(np.zeros((1, 64)), frozenset(), chain_type, 0.0)
+
+    assert selected == "K"
+    assert seen == [constants.CHAIN_TYPES.index("K")]
+
+
 def test_scfv_mode_selects_and_corrects_a_composite_reference(monkeypatch):
     representations = (
         *constants.CHAIN_TYPES,
