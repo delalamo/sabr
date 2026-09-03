@@ -115,8 +115,8 @@ def _write_structure(structure, path: Path) -> None:
     show_default=True,
     metavar="TYPES",
     help=(
-        "Comma-separated reference domain representations, such as H,K or "
-        "HK,HL."
+        "Comma-separated antibody domain representations, such as H,K or "
+        "HK,HL; TCR types A, B, G, and D use the K reference."
     ),
 )
 @click.option(

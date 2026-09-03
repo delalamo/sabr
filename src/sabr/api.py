@@ -24,9 +24,15 @@ def _normalize_chain_type(
     noise_level: float,
     mode: str,
 ) -> str:
-    """Normalize an automatic or comma-separated domain candidate list."""
-    if chain_type.strip().lower() == "auto":
+    """Normalize a TCR type or antibody domain candidate list."""
+    if not isinstance(chain_type, str):
+        raise ValueError("chain_type must be a supported type or 'auto'.")
+
+    normalized = chain_type.strip().upper()
+    if normalized == "AUTO":
         return "auto"
+    if normalized in constants.TCR_CHAIN_TYPES:
+        return normalized
 
     reference_types = tuple(load_references(noise_level, mode))
     candidates = sorted(
@@ -37,9 +43,11 @@ def _normalize_chain_type(
         for candidate in candidates
     ):
         choices = ", ".join(("auto", *reference_types))
+        tcr_choices = ", ".join(constants.TCR_CHAIN_TYPES)
         raise ValueError(
-            "chain_type must be 'auto' or comma-separated representations "
-            f"built from {choices}."
+            "chain_type must be a TCR type or comma-separated antibody "
+            f"representations built from {choices}; TCR types are "
+            f"{tcr_choices}."
         )
     return ",".join(candidates)
 
@@ -133,8 +141,9 @@ def renumber_structure(
 
     ``mode="softalign"`` selects the SoftAlign encoder, references, and gap
     penalties as one scientifically consistent parameter set. ``chain_type``
-    accepts a comma-separated set of domain representations such
-    as ``"H,K,HK,HL"``. ``scfv=True`` is equivalent to
+    accepts a comma-separated set of antibody domain representations such
+    as ``"H,K,HK,HL"``, or one TCR type from ``"A,B,G,D"``. TCR types align
+    only against the K reference. ``scfv=True`` is equivalent to
     ``chain_type="HK,HL,KH,LH"``.
     """
     options = _RenumberOptions(
@@ -160,10 +169,15 @@ def renumber_structure(
         selected_type,
         score,
     )
+    numbering_type = (
+        options.chain_type
+        if options.chain_type in constants.TCR_CHAIN_TYPES
+        else selected_type
+    )
     numbered = number_alignment(
         imgt_alignment,
         data.sequence,
         options.scheme,
-        selected_type,
+        numbering_type,
     )
     return apply_numbering(structure, chain, data, numbered)
