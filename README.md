@@ -97,9 +97,6 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
   `softalign_embeddings.npz`, and the exact penalties in
   `softalign_gap.npz` as one parameter set.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- In `sabr` mode, gap extension is `-0.175027` and gap opening is `-2.525591`.
-  In `softalign` mode, they are `0.1942468136548996` and
-  `-2.5441808700561523`, respectively, as stored in the repository asset.
 - Deterministic CDR gap distribution and DE-loop correction are always
   applied. Between IMGT anchors 79 and 85, DE-loop residues fill 80 first,
   then 84 back through 81; additional residues are inserted after 82.
