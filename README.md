@@ -163,17 +163,6 @@ the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
 H/K/L selection, regional corrections, structure-object behavior, and CLI
 failure handling.
 
-## Deferred full benchmark
-
-The historical pre-2021 SAbDab manifest contains approximately 1,012 chains.
-The current method scores about 90% on that set, not 100%. The full corpus is
-not bundled or downloaded by CI.
-
-Future benchmark work should create a checksum-pinned corpus, verify residue
-IDs, insertion codes, and coordinate parity, and compare a lossless archive
-with Foldcomp before adding a separate manual or nightly workflow. This is a
-benchmarking TODO, not a unit-test or release requirement.
-
 ## License and attribution
 
 SAbR is distributed under the repository license. The vendored ANARCI
