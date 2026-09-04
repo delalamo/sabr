@@ -67,6 +67,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
+     [--dangerously-allow-structural-gaps]
      [--no-mmcif]
      [--overwrite] [-v]
 ```
@@ -123,6 +124,7 @@ renumber_structure(
     residue_range: tuple[int, int] | None = None,
     mode: str = "sabr",
     scfv: bool = False,
+    dangerously_allow_structural_gaps: bool = False,
 )
 ```
 
@@ -150,9 +152,13 @@ non-atomic mmCIF category.
 
 ## Structural gaps and modified residues
 
-A C–N distance above 2.66 Å is treated as a structural gap. If a gap crosses a
-CDR or the DE loop between IMGT anchors 79 and 85, SAbR warns and retains the
-learned alignment for that region while continuing corrections elsewhere.
+A C–N distance above 2.66 Å is treated as a structural gap. SAbR refuses to
+run if the selected chain contains one. CLI users can explicitly override the
+safety check with `--dangerously-allow-structural-gaps`, which prints a warning
+before any other runtime output. Python API users can set
+`dangerously_allow_structural_gaps=True`. With the override enabled, a gap
+crossing a CDR or the DE loop between IMGT anchors 79 and 85 retains the
+learned alignment for that region while corrections elsewhere continue.
 Otherwise, DE-loop residues fill 80 first, then 84 back through 81; additional
 residues are inserted after 82.
 

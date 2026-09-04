@@ -32,6 +32,7 @@ sabr -i INPUT -c CHAIN -o OUTPUT
      [-m sabr|softalign]
      [--residue-range START END]
      [--scfv]
+     [--dangerously-allow-structural-gaps]
      [--no-mmcif]
      [--overwrite] [-v]
 ```
@@ -129,9 +130,13 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
   unchanged.
 
 A structural gap is detected when the C–N distance between consecutive
-residues exceeds 2.66 Å. A gap skips only the affected CDR or DE-loop
-correction and emits a warning; other regions continue normally. Performance
-degrades when structural gaps are included in the input.
+residues exceeds 2.66 Å. SAbR refuses to run when a structural gap is
+detected. To override this safety check, pass
+`--dangerously-allow-structural-gaps`; a warning is printed before any other
+runtime output. Python API callers can set
+`dangerously_allow_structural_gaps=True`. When overridden, a gap skips only
+the affected CDR or DE-loop correction and other regions continue normally,
+but performance degrades when structural gaps are included in the input.
 
 T-cell receptors are not an officially supported SAbR target. For
 experimental use, pass the actual TCR chain type (`A`, `B`, `G`, or `D`) with

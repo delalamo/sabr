@@ -58,6 +58,7 @@ def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
             "2",
             "127",
             "--overwrite",
+            "--dangerously-allow-structural-gaps",
             "-v",
         ],
     )
@@ -71,7 +72,12 @@ def test_cli_maps_the_complete_compact_interface(monkeypatch, tmp_path):
         "mode": "softalign",
         "residue_range": (2, 127),
         "scfv": False,
+        "dangerously_allow_structural_gaps": True,
     }
+    assert result.output.startswith(
+        "WARNING: Structural-gap safety check disabled by "
+        "--dangerously-allow-structural-gaps"
+    )
     assert "pipeline details" in result.output
 
 
@@ -97,6 +103,7 @@ def test_cli_defaults_are_deterministic_and_quiet(monkeypatch, tmp_path):
     assert captured["mode"] == "sabr"
     assert captured["residue_range"] is None
     assert captured["scfv"] is False
+    assert captured["dangerously_allow_structural_gaps"] is False
     assert "pipeline details" not in result.output
 
 
@@ -346,6 +353,25 @@ def test_real_softalign_cli_round_trip(tmp_path):
     assert list(parsed[0]["F"])[-1].id[1] == 128
 
 
+def test_cli_rejects_structural_gap_without_override(tmp_path):
+    output = tmp_path / "8sve-numbered.cif"
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "-i",
+            str(DATA / "8sve_L.pdb"),
+            "-c",
+            "M",
+            "-o",
+            str(output),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "SAbR will not run" in result.output
+    assert "--dangerously-allow-structural-gaps" in result.output
+    assert not output.exists()
+
+
 def test_8sve_cli_mmcif_round_trip_matches_full_golden(tmp_path):
     golden = json.loads((DATA / "8sve_cdr1_imgt.json").read_text())
     output = tmp_path / "8sve-numbered.cif"
@@ -360,9 +386,14 @@ def test_8sve_cli_mmcif_round_trip_matches_full_golden(tmp_path):
             str(output),
             "-t",
             "K",
+            "--dangerously-allow-structural-gaps",
         ],
     )
     assert result.exit_code == 0, result.output
+    assert result.output.startswith(
+        "WARNING: Structural-gap safety check disabled by "
+        "--dangerously-allow-structural-gaps"
+    )
     parsed = MMCIFParser(QUIET=True).get_structure("output", output)
     actual = [
         [residue.id[1], residue.id[2].strip()]
@@ -555,4 +586,5 @@ def test_help_and_version_are_available():
     assert "--scfv" in help_result.output
     assert "--mode" in help_result.output
     assert "--no-mmcif" in help_result.output
+    assert "--dangerously-allow-structural-gaps" in help_result.output
     assert version_result.exit_code == 0
