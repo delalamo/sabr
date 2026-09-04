@@ -1,11 +1,9 @@
 # SAbR
 
 SAbR (Structure-based Antibody Renumbering) assigns antibody residue numbers
-from backbone coordinates. It combines the original trained Haiku encoder with
-the original affine Smith–Waterman alignment and ANARCI numbering rules.
-
-SAbR is intentionally small and feature-complete. It provides one Python API
-and one command-line program.
+from backbone coordinates. It combines a fine-tuned version of the ProteinMPNN
+encoder from [SoftAlign](https://github.com/jtrinquier/SoftAlign) with the
+original affine Smith–Waterman alignment and ANARCI numbering rules.
 
 The complete usage guide is available in the
 [SAbR documentation](https://sabr.readthedocs.io/).
@@ -137,7 +135,8 @@ detected. To override this safety check, pass
 `--dangerously-allow-structural-gaps`; a warning is printed before any other
 runtime output. Python API callers can set
 `dangerously_allow_structural_gaps=True`. When overridden, a gap skips only
-the affected CDR or DE-loop correction and other regions continue normally.
+the affected CDR or DE-loop correction and other regions continue normally,
+but performance degrades when structural gaps are included in the input.
 
 T-cell receptors are not an officially supported SAbR target. For
 experimental use, pass the actual TCR chain type (`A`, `B`, `G`, or `D`) with
