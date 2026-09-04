@@ -1,4 +1,4 @@
-# SAbR
+# Structure-based Antibody Renumbering
 
 SAbR (Structure-based Antibody Renumbering) assigns antibody residue numbers
 from backbone coordinates. It combines the original trained Haiku encoder with
