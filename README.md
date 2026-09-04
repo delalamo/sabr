@@ -100,7 +100,6 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
 - Deterministic CDR gap distribution and DE-loop correction are always
   applied. Between IMGT anchors 79 and 85, DE-loop residues fill 80 first,
   then 84 back through 81; additional residues are inserted after 82.
-- No deterministic C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - `chain_type` candidate order is deterministic and resolves score ties.
