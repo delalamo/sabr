@@ -1,11 +1,9 @@
-# SAbR
+# Structure-based Antibody Renumbering
 
 SAbR (Structure-based Antibody Renumbering) assigns antibody residue numbers
-from backbone coordinates. It combines the original trained Haiku encoder with
-the original affine Smith–Waterman alignment and ANARCI numbering rules.
-
-SAbR is intentionally small and feature-complete. It provides one Python API
-and one command-line program.
+from backbone coordinates. It combines a fine-tuned version of the ProteinMPNN
+encoder from [SoftAlign](https://github.com/jtrinquier/SoftAlign) with the
+original affine Smith–Waterman alignment and ANARCI numbering rules.
 
 The complete usage guide is available in the
 [SAbR documentation](https://sabr.readthedocs.io/).
@@ -87,22 +85,6 @@ rejects multi-model structures rather than silently modifying only one model.
 If a partial range would create duplicate residue IDs with unchanged residues,
 the operation fails with an explanation.
 
-The copy preserves metadata represented by the input Biopython object.
-Alternate conformers are normalized deterministically: a complete blank-altloc
-backbone is preferred, then the complete conformer with the greatest summed
-occupancy, with altloc name as the final tie-breaker. Selections above 1,024
-polymer residues are rejected before quadratic model work; use
-`residue_range` to select the antibody domain.
-
-Modified peptide residues are translated only for sequence generation. Their
-original names and atoms remain unchanged. The committed mapping was generated
-from the wwPDB Chemical Component Dictionary snapshot dated 2026-07-11
-(`components.cif.gz` SHA-256
-`0b3323123ec10b997afe1c530b4cad30306e60b451b2b062c59bc9bb5cbe0679`) and
-contains only peptide-linking components with exactly one canonical amino-acid
-parent. Unsupported or ambiguous polymer chemistry fails explicitly; no
-runtime network access occurs.
-
 For unusually long loops that need extended insertion codes, use mmCIF output.
 
 ## Scientific behavior
@@ -113,13 +95,9 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
   `softalign_embeddings.npz`, and the exact penalties in
   `softalign_gap.npz` as one parameter set.
 - Alignment uses the original differentiable affine Smith–Waterman method.
-- In `sabr` mode, gap extension is `-0.175027` and gap opening is `-2.525591`.
-  In `softalign` mode, they are `0.1942468136548996` and
-  `-2.5441808700561523`, respectively, as stored in the repository asset.
 - Deterministic CDR gap distribution and DE-loop correction are always
   applied. Between IMGT anchors 79 and 85, DE-loop residues fill 80 first,
   then 84 back through 81; additional residues are inserted after 82.
-- No deterministic C-terminal correction is applied.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
 - `chain_type` candidate order is deterministic and resolves score ties.
@@ -137,7 +115,8 @@ detected. To override this safety check, pass
 `--dangerously-allow-structural-gaps`; a warning is printed before any other
 runtime output. Python API callers can set
 `dangerously_allow_structural_gaps=True`. When overridden, a gap skips only
-the affected CDR or DE-loop correction and other regions continue normally.
+the affected CDR or DE-loop correction and other regions continue normally,
+but performance degrades when structural gaps are included in the input.
 
 T-cell receptors are not an officially supported SAbR target. For
 experimental use, pass the actual TCR chain type (`A`, `B`, `G`, or `D`) with
@@ -177,17 +156,6 @@ The committed tests are self-contained and never download data. They verify
 the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
 H/K/L selection, regional corrections, structure-object behavior, and CLI
 failure handling.
-
-## Deferred full benchmark
-
-The historical pre-2021 SAbDab manifest contains approximately 1,012 chains.
-The current method scores about 90% on that set, not 100%. The full corpus is
-not bundled or downloaded by CI.
-
-Future benchmark work should create a checksum-pinned corpus, verify residue
-IDs, insertion codes, and coordinate parity, and compare a lossless archive
-with Foldcomp before adding a separate manual or nightly workflow. This is a
-benchmarking TODO, not a unit-test or release requirement.
 
 ## License and attribution
 
