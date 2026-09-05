@@ -7,15 +7,16 @@ parallel. Persistent JAX caching is disabled unless --cache-dir is supplied.
 """
 
 import argparse
+import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import statistics
 import subprocess
 import sys
 import time
 import warnings
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = {
@@ -54,7 +55,9 @@ def worker(args):
 
     def pipeline():
         durations = {}
-        data, durations["extract"] = timed(extract_chain, structure, chain, None)
+        data, durations["extract"] = timed(
+            extract_chain, structure, chain, None
+        )
         embedding, durations["encode"] = timed(encode, data.coords, args.mode)
         alignment_result, durations["align"] = timed(
             align, embedding, data.gap_indices, candidate, 0.0, mode=args.mode
@@ -84,6 +87,9 @@ def worker(args):
         api_samples.append(duration)
 
     key = f"{args.case}_{args.mode}"
+    numbering_digest = hashlib.sha256(
+        json.dumps(numbers, separators=(",", ":")).encode()
+    ).hexdigest()
     args.output.mkdir(parents=True, exist_ok=True)
     if args.reference:
         with np.load(args.reference / f"{key}.npz") as baseline:
@@ -96,20 +102,21 @@ def worker(args):
             )
         prior = json.loads((args.reference / f"{key}.json").read_text())
         assert selected == prior["selected"]
-        assert json.loads(json.dumps(numbers)) == prior["numbering"]
-    np.savez_compressed(
-        args.output / f"{key}.npz",
-        embedding=np.asarray(embedding),
-        matrix=matrix,
-        score=score,
-    )
+        assert numbering_digest == prior["numbering_sha256"]
+    if not args.reference:
+        np.savez_compressed(
+            args.output / f"{key}.npz",
+            embedding=np.asarray(embedding),
+            matrix=matrix,
+            score=score,
+        )
     result = {
         "case": args.case,
         "mode": args.mode,
         "residues": len(data.coords),
         "candidate": candidate,
         "selected": selected,
-        "numbering": numbers,
+        "numbering_sha256": numbering_digest,
         "python": platform.python_version(),
         "jax": jax.__version__,
         "devices": [str(device) for device in jax.devices()],
@@ -126,7 +133,9 @@ def worker(args):
         "parity": "passed" if args.reference else "baseline",
         "cache_dir": str(args.cache_dir) if args.cache_dir else None,
     }
-    (args.output / f"{key}.json").write_text(json.dumps(result, indent=2) + "\n")
+    (args.output / f"{key}.json").write_text(
+        json.dumps(result, indent=2) + "\n"
+    )
     print(
         f"{key}: N={len(data.coords)} first={first['total']:.3f}s "
         f"encode={result['warm_median']['encode']:.4f}s "
@@ -162,10 +171,14 @@ def main():
             command = [
                 sys.executable,
                 str(Path(__file__).resolve()),
-                "--output", str(args.output),
-                "--repeat", str(args.repeat),
-                "--case", case,
-                "--mode", mode,
+                "--output",
+                str(args.output),
+                "--repeat",
+                str(args.repeat),
+                "--case",
+                case,
+                "--mode",
+                mode,
             ]
             if args.reference:
                 command.extend(("--reference", str(args.reference)))

@@ -10,13 +10,13 @@ import argparse
 import importlib.util
 import json
 import os
-from pathlib import Path
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
 import warnings
+from pathlib import Path
 
 from inference import CASES, ROOT
 
@@ -32,9 +32,11 @@ def worker(args):
 
     def load_module(name, directory):
         path = Path(directory) / f"{name}.py"
-        path.write_bytes(subprocess.check_output(
-            ["git", "show", f"{args.before}:src/sabr/{name}.py"], cwd=ROOT
-        ))
+        path.write_bytes(
+            subprocess.check_output(
+                ["git", "show", f"{args.before}:src/sabr/{name}.py"], cwd=ROOT
+            )
+        )
         spec = importlib.util.spec_from_file_location(f"before_{name}", path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
@@ -55,7 +57,10 @@ def worker(args):
             getattr(old_model, "_encode_device", old_model.encode),
             old_alignment.align,
         ),
-        "after": (getattr(model, "_encode_device", model.encode), alignment.align),
+        "after": (
+            getattr(model, "_encode_device", model.encode),
+            alignment.align,
+        ),
     }
 
     def run(label):
@@ -77,14 +82,21 @@ def worker(args):
         del result
         end = time.perf_counter()
         end_cpu = time.process_time()
-        return {
-            "encode": encoded - start,
-            "align": aligned - encoded,
-            "pipeline": end - start,
-            "cpu_encode": encoded_cpu - start_cpu,
-            "cpu_align": aligned_cpu - encoded_cpu,
-            "cpu_pipeline": end_cpu - start_cpu,
-        }, embedding, matrix, selected, score, numbers
+        return (
+            {
+                "encode": encoded - start,
+                "align": aligned - encoded,
+                "pipeline": end - start,
+                "cpu_encode": encoded_cpu - start_cpu,
+                "cpu_align": aligned_cpu - encoded_cpu,
+                "cpu_pipeline": end_cpu - start_cpu,
+            },
+            embedding,
+            matrix,
+            selected,
+            score,
+            numbers,
+        )
 
     before = run("before")
     after = run("after")
@@ -123,7 +135,9 @@ def worker(args):
     }
     args.output.mkdir(parents=True, exist_ok=True)
     key = f"paired_{args.case}_{args.mode}"
-    (args.output / f"{key}.json").write_text(json.dumps(result, indent=2) + "\n")
+    (args.output / f"{key}.json").write_text(
+        json.dumps(result, indent=2) + "\n"
+    )
     print(f"{key}: {result['speedup']}", flush=True)
 
 
@@ -141,12 +155,24 @@ def main():
         worker(args)
     else:
         for case in CASES:
-            subprocess.run([
-                sys.executable, str(Path(__file__).resolve()),
-                "--before", args.before, "--output", str(args.output),
-                "--case", case, "--mode", args.mode,
-                "--repeat", str(args.repeat),
-            ], check=True, cwd=ROOT)
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "--before",
+                    args.before,
+                    "--output",
+                    str(args.output),
+                    "--case",
+                    case,
+                    "--mode",
+                    args.mode,
+                    "--repeat",
+                    str(args.repeat),
+                ],
+                check=True,
+                cwd=ROOT,
+            )
 
 
 if __name__ == "__main__":

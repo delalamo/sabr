@@ -311,12 +311,15 @@ def test_auto_reference_ties_resolve_in_h_k_l_order(monkeypatch):
         lambda noise, mode, scfv=False: references,
     )
     monkeypatch.setattr(
-        "sabr.alignment._align_reference",
-        lambda query, reference, mode: (
-            np.ones((len(query), 1)),
-            np.zeros((len(query), 3)),
-            1.0,
-        ),
+        "sabr.alignment._align_references",
+        lambda query, references, mode: [
+            (
+                np.ones((len(query), 1)),
+                np.zeros((len(query), 3)),
+                1.0,
+            )
+            for _ in references
+        ],
     )
     monkeypatch.setattr(
         "sabr.alignment.apply_corrections",
