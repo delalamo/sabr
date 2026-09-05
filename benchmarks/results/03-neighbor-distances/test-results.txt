@@ -1,0 +1,44 @@
+.F...................................................................... [ 78%]
+....................                                                     [100%]
+=================================== FAILURES ===================================
+________ test_encoder_and_affine_alignment_match_captured_main_baseline ________
+
+    def test_encoder_and_affine_alignment_match_captured_main_baseline():
+        baseline = np.load(DATA / "math_baseline.npz")
+        structure = PDBParser(QUIET=True).get_structure(
+            "heavy", DATA / "test_heavy_chain.pdb"
+        )
+        data = extract_chain(structure, "F", None)
+        embeddings = encode(data.coords)
+>       np.testing.assert_allclose(
+            embeddings, baseline["embeddings"], rtol=1e-5, atol=2e-6
+        )
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-05, atol=2e-06
+E       
+E       Mismatched elements: 1 / 7808 (0.0128%)
+E       Mismatch at index:
+E        [11, 6]: -0.01356847956776619 (ACTUAL), -0.013566315174102783 (DESIRED)
+E       Max absolute difference among violations: 2.1643937e-06
+E       Max relative difference among violations: 0.00015954
+E        ACTUAL: array([[-0.289331,  0.031254, -0.000856, ...,  0.168182,  0.190507,
+E               -0.255525],
+E              [-0.406559,  0.076021,  0.044227, ...,  0.027659,  0.154622,...
+E        DESIRED: array([[-0.289332,  0.031254, -0.000856, ...,  0.168182,  0.190506,
+E               -0.255526],
+E              [-0.406559,  0.076021,  0.044227, ...,  0.02766 ,  0.154622,...
+
+tests/test_math.py:83: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/haiku/_src/jaxpr_info.py:45
+  /Users/diegoda/.codex/worktrees/eba6/SAbR/.venv/lib/python3.12/site-packages/haiku/_src/jaxpr_info.py:45: DeprecationWarning: jax.core.DropVar is deprecated. Use jax.extend.core.DropVar.
+    DropVar: TypeAlias = jax.core.DropVar
+
+tests/test_math.py::test_encoder_and_affine_alignment_match_captured_main_baseline
+  /Users/diegoda/.codex/worktrees/eba6/SAbR/.venv/lib/python3.12/site-packages/haiku/_src/base.py:80: DeprecationWarning: jax.core.get_opaque_trace_state is deprecated. Use jax.extend.core.get_opaque_trace_state.
+    ts = jax_core.get_opaque_trace_state(convention="haiku")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_math.py::test_encoder_and_affine_alignment_match_captured_main_baseline
+1 failed, 91 passed, 2 warnings in 70.18s (0:01:10)

@@ -58,22 +58,29 @@ def worker(args):
     def run(label):
         encode, align = implementations[label]
         start = time.perf_counter()
+        start_cpu = time.process_time()
         embedding = encode(data.coords, args.mode)
         jax.block_until_ready(embedding)
         encoded = time.perf_counter()
+        encoded_cpu = time.process_time()
         matrix, selected, score = align(
             embedding, data.gap_indices, candidates, 0.0, mode=args.mode
         )
         jax.block_until_ready(matrix)
         aligned = time.perf_counter()
+        aligned_cpu = time.process_time()
         numbers = number_alignment(matrix, data.sequence, "imgt", selected)
         result = apply_numbering(structure, chain, data, numbers)
         del result
         end = time.perf_counter()
+        end_cpu = time.process_time()
         return {
             "encode": encoded - start,
             "align": aligned - encoded,
             "pipeline": end - start,
+            "cpu_encode": encoded_cpu - start_cpu,
+            "cpu_align": aligned_cpu - encoded_cpu,
+            "cpu_pipeline": end_cpu - start_cpu,
         }, embedding, matrix, selected, score, numbers
 
     before = run("before")
@@ -94,7 +101,7 @@ def worker(args):
     medians = {
         label: {
             stage: statistics.median(sample[stage] for sample in timings)
-            for stage in ("encode", "align", "pipeline")
+            for stage in timings[0]
         }
         for label, timings in samples.items()
     }
