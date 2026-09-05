@@ -2,7 +2,9 @@
 
 SAbR assigns antibody residue numbers from backbone coordinates. It accepts
 PDB and mmCIF structures, preserves the input object, and supports IMGT,
-Chothia, Kabat, Martin, AHo, and Wolfguy numbering.
+Chothia, Kabat, Martin, AHo, and Wolfguy numbering. Its encoder is a fine-tuned
+version of the ProteinMPNN encoder from
+[SoftAlign](https://github.com/jtrinquier/SoftAlign).
 
 ## Installation
 
@@ -159,8 +161,9 @@ before any other runtime output. Python API users can set
 `dangerously_allow_structural_gaps=True`. With the override enabled, a gap
 crossing a CDR or the DE loop between IMGT anchors 79 and 85 retains the
 learned alignment for that region while corrections elsewhere continue.
-Otherwise, DE-loop residues fill 80 first, then 84 back through 81; additional
-residues are inserted after 82.
+Even with the override, performance degrades when structural gaps are
+included. Without a gap crossing that region, DE-loop residues fill 80 first,
+then 84 back through 81; additional residues are inserted after 82.
 
 Supported modified peptide residues are translated to their canonical parent
 only for sequence generation. Original residue names and atoms are preserved.
