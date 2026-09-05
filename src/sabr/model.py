@@ -155,6 +155,8 @@ class ProteinFeatures(hk.Module):
         D = mask_2D * jnp.sqrt(jnp.sum(dX**2, 3) + eps)
         D_max = jnp.max(D, -1, keepdims=True)
         D_adjust = D + (1.0 - mask_2D) * D_max
+        # Padding must never tie a real residue for a neighbor slot.
+        D_adjust = jnp.where(mask_2D > 0, D_adjust, jnp.inf)
         D_neighbors, E_idx = jax.lax.approx_min_k(
             D_adjust, np.minimum(self.top_k, X.shape[1]), reduction_dimension=-1
         )
@@ -476,16 +478,25 @@ def _encode(coords, mask, chain_ids, residue_indices):
 
 
 _TRANSFORMED_ENCODER = hk.transform(_encode)
+_APPLY_ENCODER = jax.jit(_TRANSFORMED_ENCODER.apply)
 
 
-def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
-    """Return the selected model's 64-dimensional residue embeddings."""
+def _encode_device(coords: np.ndarray, mode: str = "sabr") -> jax.Array:
+    """Keep embeddings on the JAX device for the inference pipeline."""
     n_residues = coords.shape[0]
-    batched_coords = coords[None, :]
-    mask = np.ones((1, n_residues))
-    chain_ids = np.ones((1, n_residues))
-    residue_indices = np.arange(n_residues)[None, :]
-    result = _TRANSFORMED_ENCODER.apply(
+    # Reuse compilations across nearby lengths. Small graphs retain their
+    # exact shape so padding cannot change the historical neighbor count.
+    padded_length = n_residues
+    if n_residues > constants.EMBED_DIM:
+        padded_length = ((n_residues + 31) // 32) * 32
+    batched_coords = np.pad(
+        coords, ((0, padded_length - n_residues), (0, 0), (0, 0))
+    )[None, :]
+    mask = np.zeros((1, padded_length))
+    mask[:, :n_residues] = 1
+    chain_ids = np.ones((1, padded_length))
+    residue_indices = np.arange(padded_length)[None, :]
+    result = _APPLY_ENCODER(
         load_parameters(mode),
         jax.random.PRNGKey(0),
         batched_coords,
@@ -493,4 +504,9 @@ def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
         chain_ids,
         residue_indices,
     )
-    return np.asarray(result[0])
+    return result[0, :n_residues]
+
+
+def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
+    """Return the selected model's 64-dimensional residue embeddings."""
+    return np.asarray(_encode_device(coords, mode))

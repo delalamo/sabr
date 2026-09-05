@@ -309,6 +309,43 @@ def _affine_gap_penalty(
     return gap_open + (length - 1) * gap_extend
 
 
+def _align_references(query, references, mode):
+    """Batch single-domain candidates, masking padding beyond both anchors."""
+    reference_lengths = [len(reference) + 2 for reference in references]
+    padded = np.zeros(
+        (len(references), max(reference_lengths), query.shape[1]),
+        dtype=np.result_type(*(reference.dtype for reference in references)),
+    )
+    for index, reference in enumerate(references):
+        padded[index, 1 : len(reference) + 1] = reference
+    lengths = jnp.asarray(
+        [[query.shape[0], length] for length in reference_lengths]
+    )
+    similarity = jnp.einsum(
+        "ia,nja->nij", jnp.asarray(query), jnp.asarray(padded)
+    )
+    gap_extend, gap_open = load_gap_penalties(mode)
+    scores, soft_alignment = _AFFINE_ALIGNMENT(
+        similarity,
+        lengths,
+        constants.DEFAULT_TEMPERATURE,
+        gap_extend,
+        gap_open,
+        -1,
+    )
+    soft_alignment, similarity, scores = (
+        np.asarray(value) for value in (soft_alignment, similarity, scores)
+    )
+    return [
+        (
+            soft_alignment[index, :, 1 : length - 1],
+            similarity[index, :, :length],
+            float(scores[index]),
+        )
+        for index, length in enumerate(reference_lengths)
+    ]
+
+
 def _terminal_gap_penalty(
     alignment: np.ndarray,
     mode: str = "sabr",
@@ -352,6 +389,21 @@ def align(
         candidates = ("K",)
     else:
         candidates = tuple(chain_type.split(","))
+    batched = {}
+    if len(candidates) > 1 and all(
+        len(candidate) == 1 for candidate in candidates
+    ):
+        batched = dict(
+            zip(
+                candidates,
+                _align_references(
+                    query,
+                    [references[candidate][0] for candidate in candidates],
+                    mode,
+                ),
+                strict=True,
+            )
+        )
     best = None
     for candidate in candidates:
         if candidate not in references:
@@ -359,7 +411,9 @@ def align(
                 references, candidate
             )
         reference, positions = references[candidate]
-        if len(candidate) > 1:
+        if candidate in batched:
+            reduced, similarity, score = batched[candidate]
+        elif len(candidate) > 1:
             free_gap_boundaries = tuple(
                 sum(
                     position <= domain_index * constants.IMGT_MAX_POSITION
