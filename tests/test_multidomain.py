@@ -126,7 +126,7 @@ def test_synthetic_domain_numbering_matches_independent_single_domain_goldens(
         source = cli._read_structure(case["path"])
         if domain:
             for _ in range(linker_length):
-                residue = copy.deepcopy(next(source.get_residues()))
+                residue = next(source.get_residues()).copy()
                 residue.detach_parent()
                 residue.resname = "GLY"
                 residue.id = (" ", 10000 + row, " ")
@@ -149,9 +149,7 @@ def test_synthetic_domain_numbering_matches_independent_single_domain_goldens(
             for index, (number, code, aa) in enumerate(baseline["numbered"])
         )
         for original_index in case["data"].residue_indices[:count]:
-            residue = copy.deepcopy(
-                list(source[0][case["chain"]])[original_index]
-            )
+            residue = list(source[0][case["chain"]])[original_index].copy()
             residue.detach_parent()
             residue.id = (" ", 10000 + row, " ")
             chain.add(residue)
