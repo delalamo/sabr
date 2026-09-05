@@ -16,7 +16,7 @@ def _walk_with_scope(node, inside_function=False, inside_class=False):
         )
 
 
-def test_no_lazy_imports_or_module_variable_annotations():
+def main():
     for path in SOURCE.glob("*.py"):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node, inside_function, inside_class in _walk_with_scope(tree):
@@ -28,3 +28,7 @@ def test_no_lazy_imports_or_module_variable_annotations():
                 assert (
                     inside_function or inside_class
                 ), f"Module variable annotation in {path}: {node.lineno}"
+
+
+if __name__ == "__main__":
+    main()

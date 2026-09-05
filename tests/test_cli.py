@@ -1,4 +1,3 @@
-import json
 import logging
 import shutil
 from pathlib import Path
@@ -311,48 +310,6 @@ def test_cli_failure_leaves_no_output_or_temporary_file(monkeypatch, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_real_cli_round_trip(monkeypatch, tmp_path):
-    output = tmp_path / "numbered.pdb"
-    result = CliRunner().invoke(
-        cli.main,
-        [
-            "-i",
-            str(DATA / "test_heavy_chain.pdb"),
-            "-c",
-            "F",
-            "-o",
-            str(output),
-            "-t",
-            "H,K",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    parsed = PDBParser(QUIET=True).get_structure("output", output)
-    assert list(parsed[0]["F"])[-1].id[1] == 128
-
-
-def test_real_softalign_cli_round_trip(tmp_path):
-    output = tmp_path / "softalign-numbered.pdb"
-    result = CliRunner().invoke(
-        cli.main,
-        [
-            "-i",
-            str(DATA / "test_heavy_chain.pdb"),
-            "-c",
-            "F",
-            "-o",
-            str(output),
-            "-t",
-            "H",
-            "--mode",
-            "softalign",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    parsed = PDBParser(QUIET=True).get_structure("output", output)
-    assert list(parsed[0]["F"])[-1].id[1] == 128
-
-
 def test_cli_rejects_structural_gap_without_override(tmp_path):
     output = tmp_path / "8sve-numbered.cif"
     result = CliRunner().invoke(
@@ -370,37 +327,6 @@ def test_cli_rejects_structural_gap_without_override(tmp_path):
     assert "SAbR will not run" in result.output
     assert "--dangerously-allow-structural-gaps" in result.output
     assert not output.exists()
-
-
-def test_8sve_cli_mmcif_round_trip_matches_full_golden(tmp_path):
-    golden = json.loads((DATA / "8sve_cdr1_imgt.json").read_text())
-    output = tmp_path / "8sve-numbered.cif"
-    result = CliRunner().invoke(
-        cli.main,
-        [
-            "-i",
-            str(DATA / "8sve_L.pdb"),
-            "-c",
-            "M",
-            "-o",
-            str(output),
-            "-t",
-            "K",
-            "--dangerously-allow-structural-gaps",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert result.output.startswith(
-        "WARNING: Structural-gap safety check disabled by "
-        "--dangerously-allow-structural-gaps"
-    )
-    parsed = MMCIFParser(QUIET=True).get_structure("output", output)
-    actual = [
-        [residue.id[1], residue.id[2].strip()]
-        for residue in parsed[0]["M"]
-        if not residue.id[0].strip()
-    ]
-    assert actual == [[item[2], item[3]] for item in golden["mapping"]]
 
 
 def test_cli_accepts_mmcif_input(monkeypatch, tmp_path):

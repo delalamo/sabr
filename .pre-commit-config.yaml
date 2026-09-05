@@ -24,3 +24,12 @@ repos:
         args:
           - "--max-line-length=80"
           - "--extend-ignore=E203,W503"
+
+  - repo: local
+    hooks:
+      - id: sabr-architecture
+        name: SAbR architecture conventions
+        entry: python scripts/check_architecture.py
+        language: python
+        pass_filenames: false
+        files: ^(src/sabr/.*\.py|scripts/check_architecture\.py)$
