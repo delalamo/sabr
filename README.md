@@ -100,9 +100,7 @@ For unusually long loops that need extended insertion codes, use mmCIF output.
   then 84 back through 81; additional residues are inserted after 82.
 - Automatic chain selection aligns against H, K, and L references and uses
   the highest score, with deterministic H/K/L tie order.
-- `chain_type` candidates are deduplicated and sorted lexicographically
-  after case normalization; that canonical order resolves score ties. Domain
-  order within each candidate remains unchanged.
+- `chain_type` candidate order is deterministic and resolves score ties.
 - scFv mode searches only the `HK,HL,KH,LH` candidate list in that order.
 - Multi-domain candidates do not apply gap-open or gap-extension costs to
   query linker residues aligned at any boundary between domain references.
@@ -131,9 +129,7 @@ other bundled schemes are antibody-specific.
 
 ```bash
 pip install -c constraints.txt -e '.[test]'
-JAX_PLATFORMS=cpu pytest --cov=sabr
-JAX_PLATFORMS=cpu pytest -m 'not integration'
-JAX_PLATFORMS=cpu python scripts/check_test_mutations.py
+JAX_PLATFORMS=cpu pytest
 pre-commit run --all-files
 ```
 
@@ -144,25 +140,7 @@ JAX backend; CPU is simply the canonical CI regression baseline.
 The committed tests are self-contained and never download data. They verify
 the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
 H/K/L selection, regional corrections, structure-object behavior, and CLI
-failure handling. Integration tests include real HK/LH structures in both modes,
-synthetic higher-order domain composition, all six schemes, all noise levels,
-rigid-transform invariance, and complete atomic-content preservation. The
-`integration` marker permits focused local runs; CI always runs the full suite.
-Coverage includes branches and keeps the 95% aggregate gate, with statement
-and branch percentages reported separately. The AST architecture rules run as
-a local pre-commit hook.
-
-Fixture sources, checksums, capture instructions, and known scientific
-limitations are documented in [tests/data/README.md](tests/data/README.md).
-Goldens preserve reviewed historical behavior; they are not an independent
-accuracy benchmark. In particular, SoftAlign assigns part of the annotated
-8DY0 linker as heavy-domain insertions; the regression preserves this known
-mode difference without altering trained parameters or alignment rules.
-
-Wheel CI and the publish workflow run `scripts/wheel_smoke.py` in an installed
-wheel environment. The checks use offset input residue IDs, execute both modes
-outside the checkout with `PYTHONPATH` cleared, compare complete mappings and
-atomic content, and exercise the packaged modified-residue mapping.
+failure handling.
 
 ## License and attribution
 

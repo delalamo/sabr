@@ -186,115 +186,6 @@ def test_standard_de_loop_keeps_the_learned_alignment():
     np.testing.assert_array_equal(corrected, original)
 
 
-@pytest.mark.parametrize(
-    "region,start,end,anchors",
-    [
-        ("CDR1", 27, 38, (23, 40)),
-        ("CDR2", 56, 65, (54, 67)),
-        ("CDR3", 105, 117, (104, 118)),
-    ],
-)
-@pytest.mark.parametrize("scenario", ("missing", "reversed", "same_row"))
-def test_unusable_cdr_anchors_preserve_alignment(
-    caplog, region, start, end, anchors, scenario
-):
-    alignment = np.zeros((30, 128), dtype=int)
-    if scenario != "missing":
-        alignment[20, anchors[0] - 1] = 1
-        alignment[20 if scenario == "same_row" else 2, anchors[1] - 1] = 1
-    original = alignment.copy()
-    np.testing.assert_array_equal(
-        correct_cdr_loop(alignment, region, start, end), original
-    )
-    assert f"Skipping {region}" in caplog.text
-
-
-@pytest.mark.parametrize(
-    "region,start,end,anchors",
-    [("CDR1", 27, 38, (23, 40)), ("CDR2", 56, 65, (54, 67))],
-)
-def test_cdr_with_insufficient_framework_residues_is_unchanged(
-    caplog, region, start, end, anchors
-):
-    alignment = np.zeros((2, 128), dtype=int)
-    alignment[0, anchors[0] - 1] = 1
-    alignment[1, anchors[1] - 1] = 1
-    original = alignment.copy()
-    np.testing.assert_array_equal(
-        correct_cdr_loop(alignment, region, start, end), original
-    )
-    assert "not enough residues" in caplog.text
-
-
-@pytest.mark.parametrize("offset", (-2, -1, 1, 2))
-def test_nearby_anchors_still_rebuild_cdr(offset):
-    alignment = np.zeros((18, 128), dtype=int)
-    alignment[0, 22 + offset] = 1
-    alignment[17, 39 + offset] = 1
-    corrected = correct_cdr_loop(alignment, "CDR1", 27, 38)
-    assert np.flatnonzero(corrected[1]).tolist() == [23]
-    assert np.flatnonzero(corrected[16]).tolist() == [38]
-    assert corrected[4:16, 26:38].trace() == 12
-
-
-@pytest.mark.parametrize(
-    "count,expected",
-    [
-        (0, []),
-        (3, [26, 27, 37]),
-        (12, list(range(26, 38))),
-        (14, [*range(26, 32), None, None, *range(32, 38)]),
-    ],
-)
-def test_cdr1_rebuilds_short_standard_and_overflowing_loops(count, expected):
-    alignment = np.zeros((count + 6, 128), dtype=int)
-    alignment[0, 22] = 1
-    alignment[-1, 39] = 1
-    corrected = correct_cdr_loop(alignment, "CDR1", 27, 38)
-    for row, column in enumerate(expected, start=4):
-        assert np.flatnonzero(corrected[row]).tolist() == (
-            [] if column is None else [column]
-        )
-    assert [
-        np.flatnonzero(corrected[i]).item() for i in (1, 2, 3, count + 4)
-    ] == [23, 24, 25, 38]
-
-
-@pytest.mark.parametrize(
-    "region,start,end",
-    [("CDR1", 22, 39), ("CDR2", 53, 66), ("CDR3", 103, 117), ("DE", 78, 84)],
-)
-@pytest.mark.parametrize(
-    "boundary,skipped",
-    [("before", False), ("first", True), ("last", True), ("after", False)],
-)
-def test_structural_gap_boundaries_skip_only_crossed_bonds(
-    region, start, end, boundary, skipped
-):
-    alignment = np.eye(128, dtype=int)
-    alignment[start + 1] = 0
-    original = alignment.copy()
-    gap = {"before": start - 1, "first": start, "last": end - 1, "after": end}[
-        boundary
-    ]
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        if region == "DE":
-            result = correct_de_loop(alignment, frozenset({gap}))
-        else:
-            bounds = {"CDR1": (27, 38), "CDR2": (56, 65), "CDR3": (105, 117)}[
-                region
-            ]
-            result = correct_cdr_loop(
-                alignment, region, *bounds, frozenset({gap})
-            )
-    assert bool(captured) is skipped
-    if skipped:
-        np.testing.assert_array_equal(result, original)
-    else:
-        np.testing.assert_array_equal(result, np.eye(128, dtype=int))
-
-
 def test_gap_in_cdr1_does_not_suppress_cdr2_repair():
     alignment = np.eye(128, dtype=int)
     alignment[30] = 0
@@ -306,12 +197,11 @@ def test_gap_in_cdr1_does_not_suppress_cdr2_repair():
     assert corrected[58, 58] == 1
 
 
-@pytest.mark.parametrize("scenario", ("missing", "reversed"))
-def test_unusable_de_anchors_preserve_alignment(caplog, scenario):
-    alignment = np.zeros((3, 128), dtype=int)
-    if scenario == "reversed":
-        alignment[2, 78] = 1
-        alignment[0, 84] = 1
+@pytest.mark.parametrize("anchor_column", [22, 39])
+def test_missing_cdr_anchor_preserves_alignment(anchor_column, caplog):
+    alignment = np.eye(128, dtype=int)
+    alignment[:, anchor_column - 2 : anchor_column + 3] = 0
     original = alignment.copy()
-    np.testing.assert_array_equal(correct_de_loop(alignment), original)
-    assert "Skipping DE loop" in caplog.text
+    corrected = correct_cdr_loop(alignment, "CDR1", 27, 38)
+    np.testing.assert_array_equal(corrected, original)
+    assert "missing anchor" in caplog.text

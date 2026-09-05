@@ -193,24 +193,3 @@ Common errors include:
 For a long chain containing domains outside the desired candidate, pass
 `--residue-range` on the command line or `residue_range=(start, end)` in
 Python.
-
-
-## Regression coverage and input validation
-
-Candidate lists are case-normalized, deduplicated, and sorted
-lexicographically before score ties are resolved. Domain order within a
-candidate remains unchanged. Unsupported TCR numbering schemes and unsupported
-output extensions fail before model execution. Overwrite protection is checked
-against the final output path, including automatic mmCIF conversion.
-
-Deterministic conformer selection applies to model inputs. All conformers in
-the original Biopython structure are retained in the returned copy. Cached
-model parameter dictionaries are shared internal state and must not be mutated;
-their JAX array values are immutable.
-
-The offline regression suite covers both parameter modes, all six schemes,
-real and synthetic multi-domain cases, and complete structure preservation.
-Regression captures describe existing behavior rather than independent
-biological ground truth. On 8DY0, SoftAlign includes part of the annotated
-linker in heavy-domain insertion numbering; SAbR assigns that segment to
-sequential linker positions. This established mode difference is retained.

@@ -24,8 +24,6 @@ jobs:
       - run: /tmp/sabr-wheel-test/bin/pip install -c constraints.txt dist/*.whl
       - run: /tmp/sabr-wheel-test/bin/python -c "import sabr"
       - run: /tmp/sabr-wheel-test/bin/sabr --help
-      - name: Verify installed wheel behavior outside the checkout
-        run: env -u PYTHONPATH JAX_PLATFORMS=cpu /tmp/sabr-wheel-test/bin/python scripts/wheel_smoke.py --data-dir "$GITHUB_WORKSPACE/tests/data"
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__

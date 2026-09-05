@@ -67,40 +67,17 @@ def _resolve_output_path(structure, path: Path, no_mmcif: bool = False) -> Path:
     return path
 
 
-def _validate_output_extension(path: Path) -> None:
-    if path.suffix.lower() not in (".pdb", ".cif", ".mmcif"):
-        raise ValueError("Output must use the .pdb, .cif, or .mmcif extension.")
-
-
 def _write_structure(structure, path: Path) -> None:
-    _validate_output_extension(path)
     suffix = path.suffix.lower()
     if suffix == ".pdb":
         _validate_pdb_output(structure)
         writer = PDBIO()
-    else:
+    elif suffix in (".cif", ".mmcif"):
         writer = MMCIFIO()
+    else:
+        raise ValueError("Output must use the .pdb, .cif, or .mmcif extension.")
     writer.set_structure(structure)
     writer.save(str(path))
-
-
-def _atomic_write_structure(structure, path: Path) -> None:
-    """Replace a destination only after writing, cleaning up on every exit."""
-    temporary = path.with_name(
-        f".{path.stem}.{uuid.uuid4().hex}.tmp{path.suffix}"
-    )
-    try:
-        _write_structure(structure, temporary)
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError as cleanup_error:
-            LOGGER.warning(
-                "Could not remove temporary output %s: %s",
-                temporary,
-                cleanup_error,
-            )
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -202,8 +179,12 @@ def main(
             "Structural-gap safety check disabled by "
             "--dangerously-allow-structural-gaps; results may be invalid."
         )
+    temporary = None
     try:
-        _validate_output_extension(output_path)
+        if output_path.suffix.lower() not in (".pdb", ".cif", ".mmcif"):
+            raise ValueError(
+                "Output must use the .pdb, .cif, or .mmcif extension."
+            )
         structure = _read_structure(input_path)
         if input_path.suffix.lower() in (".cif", ".mmcif"):
             LOGGER.warning(
@@ -240,10 +221,24 @@ def main(
                 "to forbid this behavior.",
                 resolved_output_path,
             )
-        _atomic_write_structure(result, resolved_output_path)
-    except click.ClickException:
-        raise
+        temporary = resolved_output_path.with_name(
+            f".{resolved_output_path.stem}.{uuid.uuid4().hex}"
+            f".tmp{resolved_output_path.suffix}"
+        )
+        _write_structure(result, temporary)
+        os.replace(temporary, resolved_output_path)
     except Exception as error:
+        if temporary is not None and temporary.exists():
+            try:
+                temporary.unlink()
+            except OSError as cleanup_error:
+                LOGGER.warning(
+                    "Could not remove temporary output %s: %s",
+                    temporary,
+                    cleanup_error,
+                )
+        if isinstance(error, click.ClickException):
+            raise
         if verbose:
             LOGGER.exception("Renumbering failed")
         raise click.ClickException(str(error)) from error
