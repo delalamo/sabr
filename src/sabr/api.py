@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from sabr import constants
 from sabr.alignment import align, load_references
-from sabr.model import encode
+from sabr.model import _encode_device as encode
 from sabr.numbering import number_alignment
 from sabr.structure import apply_numbering, extract_chain
 

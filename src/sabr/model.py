@@ -479,8 +479,8 @@ _TRANSFORMED_ENCODER = hk.transform(_encode)
 _APPLY_ENCODER = jax.jit(_TRANSFORMED_ENCODER.apply)
 
 
-def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
-    """Return the selected model's 64-dimensional residue embeddings."""
+def _encode_device(coords: np.ndarray, mode: str = "sabr") -> jax.Array:
+    """Keep embeddings on the JAX device for the inference pipeline."""
     n_residues = coords.shape[0]
     batched_coords = coords[None, :]
     mask = np.ones((1, n_residues))
@@ -494,4 +494,9 @@ def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
         chain_ids,
         residue_indices,
     )
-    return np.asarray(result[0])
+    return result[0]
+
+
+def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
+    """Return the selected model's 64-dimensional residue embeddings."""
+    return np.asarray(_encode_device(coords, mode))

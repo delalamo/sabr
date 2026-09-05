@@ -34,7 +34,7 @@ def worker(args):
 
     from sabr import renumber_structure
     from sabr.alignment import align
-    from sabr.model import encode
+    from sabr.api import encode
     from sabr.numbering import number_alignment
     from sabr.structure import apply_numbering, extract_chain
 

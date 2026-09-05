@@ -51,8 +51,11 @@ def worker(args):
     warnings.filterwarnings("ignore", category=UserWarning)
     data = extract_chain(structure, chain, None)
     implementations = {
-        "before": (old_model.encode, old_alignment.align),
-        "after": (model.encode, alignment.align),
+        "before": (
+            getattr(old_model, "_encode_device", old_model.encode),
+            old_alignment.align,
+        ),
+        "after": (getattr(model, "_encode_device", model.encode), alignment.align),
     }
 
     def run(label):
