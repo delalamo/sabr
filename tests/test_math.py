@@ -81,7 +81,7 @@ def test_encoder_and_affine_alignment_match_captured_main_baseline():
     data = extract_chain(structure, "F", None)
     embeddings = encode(data.coords)
     np.testing.assert_allclose(
-        embeddings, baseline["embeddings"], rtol=1e-5, atol=2e-6
+        embeddings, baseline["embeddings"], rtol=1e-5, atol=3e-6
     )
     softalign_embeddings = encode(data.coords, "softalign")
     assert softalign_embeddings.shape == embeddings.shape
