@@ -1,0 +1,100 @@
+{
+  "before_revision": "2f2291d",
+  "case": "heavy",
+  "mode": "sabr",
+  "samples": {
+    "before": [
+      {
+        "length": 113,
+        "seconds": 6.460630415938795
+      },
+      {
+        "length": 114,
+        "seconds": 3.7986492089694366
+      },
+      {
+        "length": 115,
+        "seconds": 4.298404000001028
+      },
+      {
+        "length": 116,
+        "seconds": 3.933270125067793
+      },
+      {
+        "length": 117,
+        "seconds": 1.690202167024836
+      },
+      {
+        "length": 118,
+        "seconds": 1.6822740000206977
+      },
+      {
+        "length": 119,
+        "seconds": 2.004916541976854
+      },
+      {
+        "length": 120,
+        "seconds": 2.158475791104138
+      },
+      {
+        "length": 121,
+        "seconds": 2.50905758398585
+      },
+      {
+        "length": 122,
+        "seconds": 1.4934214999666438
+      }
+    ],
+    "after": [
+      {
+        "length": 113,
+        "seconds": 3.2160717910155654
+      },
+      {
+        "length": 114,
+        "seconds": 0.18096245895139873
+      },
+      {
+        "length": 115,
+        "seconds": 0.25829562498256564
+      },
+      {
+        "length": 116,
+        "seconds": 0.2959752499591559
+      },
+      {
+        "length": 117,
+        "seconds": 0.22521333291660994
+      },
+      {
+        "length": 118,
+        "seconds": 0.1276800410123542
+      },
+      {
+        "length": 119,
+        "seconds": 0.13883791689295322
+      },
+      {
+        "length": 120,
+        "seconds": 0.1203877500956878
+      },
+      {
+        "length": 121,
+        "seconds": 0.14878258400131017
+      },
+      {
+        "length": 122,
+        "seconds": 0.1267682920442894
+      }
+    ]
+  },
+  "total": {
+    "before": 30.029301334056072,
+    "after": 4.83897504187189
+  },
+  "compiled_encoder_variants": {
+    "before": 10,
+    "after": 1
+  },
+  "parity": "passed"
+}

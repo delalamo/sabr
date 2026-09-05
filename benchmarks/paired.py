@@ -63,6 +63,49 @@ def worker(args):
         ),
     }
 
+    if args.length_sweep:
+        samples = {"before": [], "after": []}
+        for index, length in enumerate(
+            range(len(data.coords) - 9, len(data.coords) + 1)
+        ):
+            outputs = {}
+            order = (
+                ("before", "after") if index % 2 == 0 else ("after", "before")
+            )
+            for label in order:
+                start = time.perf_counter()
+                outputs[label] = implementations[label][0](
+                    data.coords[:length], args.mode
+                )
+                jax.block_until_ready(outputs[label])
+                samples[label].append(
+                    {"length": length, "seconds": time.perf_counter() - start}
+                )
+            np.testing.assert_allclose(
+                outputs["after"], outputs["before"], rtol=1e-5, atol=2e-6
+            )
+        result = {
+            "before_revision": args.before,
+            "case": args.case,
+            "mode": args.mode,
+            "samples": samples,
+            "total": {
+                label: sum(sample["seconds"] for sample in values)
+                for label, values in samples.items()
+            },
+            "compiled_encoder_variants": {
+                "before": old_model._APPLY_ENCODER._cache_size(),
+                "after": model._APPLY_ENCODER._cache_size(),
+            },
+            "parity": "passed",
+        }
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / f"length_sweep_{args.case}_{args.mode}.json").write_text(
+            json.dumps(result, indent=2) + "\n"
+        )
+        print(result, flush=True)
+        return
+
     def run(label):
         encode, align = implementations[label]
         start = time.perf_counter()
@@ -148,7 +191,10 @@ def main():
     parser.add_argument("--case", choices=CASES)
     parser.add_argument("--mode", choices=("sabr", "softalign"), default="sabr")
     parser.add_argument("--repeat", type=int, default=11)
+    parser.add_argument("--length-sweep", action="store_true")
     args = parser.parse_args()
+    if args.length_sweep and not args.case:
+        parser.error("--length-sweep requires --case")
     os.environ["JAX_PLATFORMS"] = "cpu"
     os.environ["JAX_ENABLE_COMPILATION_CACHE"] = "false"
     if args.case:
