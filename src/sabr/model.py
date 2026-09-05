@@ -445,7 +445,10 @@ def _unflatten_parameters(flat_parameters: dict) -> dict:
 
 @functools.cache
 def load_parameters(mode: str = "sabr") -> dict:
-    """Load the immutable encoder parameters for one alignment mode."""
+    """Load cached parameter dictionaries containing immutable JAX arrays.
+
+    Callers must not modify the shared dictionaries.
+    """
     filenames = {
         "sabr": "mpnn_encoder.npz",
         "softalign": "softalign_encoder.npz",

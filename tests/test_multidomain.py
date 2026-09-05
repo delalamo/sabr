@@ -135,10 +135,15 @@ def test_synthetic_domain_numbering_matches_independent_single_domain_goldens(
                 row += 1
         count = len(golden[kind]["schemes"]["imgt"]["numbered"])
         domain_alignment = case["alignment"][:count]
-        alignment[row : row + count, domain * 128 : (domain + 1) * 128] = domain_alignment
+        alignment[row : row + count, domain * 128 : (domain + 1) * 128] = (
+            domain_alignment
+        )
         baseline = golden[kind]["schemes"]["imgt"]
         assert baseline["first_row"] == 0
-        assert "".join(aa for _, _, aa in baseline["numbered"]) == case["data"].sequence[:count]
+        assert (
+            "".join(aa for _, _, aa in baseline["numbered"])
+            == case["data"].sequence[:count]
+        )
         expected.extend(
             (row + index, number + 1000 * domain, code.strip(), aa)
             for index, (number, code, aa) in enumerate(baseline["numbered"])
