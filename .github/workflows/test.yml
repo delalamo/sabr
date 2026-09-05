@@ -35,7 +35,16 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -c constraints.txt -e '.[test]'
-      - run: JAX_PLATFORMS=cpu pytest --cov=sabr
+      - run: JAX_PLATFORMS=cpu pytest --cov=sabr --cov-report=term-missing --cov-report=json --durations=10
+      - name: Report statement and branch coverage
+        run: |
+          python - <<'PYTHON'
+          import json
+          with open("coverage.json") as handle:
+              totals = json.load(handle)["totals"]
+          for label, hit, total in (("Statements", "covered_lines", "num_statements"), ("Branches", "covered_branches", "num_branches")):
+              print(f"{label}: {100 * totals[hit] / totals[total]:.2f}%")
+          PYTHON
 
   wheel:
     runs-on: ubuntu-latest
@@ -53,3 +62,5 @@ jobs:
       - run: /tmp/sabr-wheel-test/bin/python -c "import sabr"
       - run: /tmp/sabr-wheel-test/bin/sabr --help
       - run: /tmp/sabr-wheel-test/bin/sabr --version
+      - name: Verify installed wheel behavior outside the checkout
+        run: env -u PYTHONPATH JAX_PLATFORMS=cpu /tmp/sabr-wheel-test/bin/python scripts/wheel_smoke.py --data-dir "$GITHUB_WORKSPACE/tests/data"

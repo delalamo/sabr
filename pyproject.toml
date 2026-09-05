@@ -69,6 +69,7 @@ testpaths = ["tests"]
 markers = ["integration: real model, numbering, or serialization pipeline"]
 
 [tool.coverage.run]
+branch = true
 omit = ["src/sabr/_anarci/*"]
 
 [tool.coverage.report]

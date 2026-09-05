@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 from urllib.request import urlopen
 
+import jax
 import numpy as np
 from Bio.PDB import MMCIFIO, MMCIFParser, PDBParser, Select
 
@@ -45,6 +46,8 @@ def main():
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
+    if jax.default_backend() != "cpu":
+        parser.error("capture regressions with JAX_PLATFORMS=cpu")
     output = args.output_dir
     output.mkdir(parents=True, exist_ok=False)
     data_dir = args.repo / "tests" / "data"
@@ -58,7 +61,7 @@ def main():
             name: importlib.metadata.version(name)
             for name in ("biopython", "jax", "jaxlib", "numpy", "dm-haiku")
         },
-        "backend": "cpu",
+        "backend": jax.default_backend(),
         "parameters": {"noise_level": 0.0, "scfv_schemes": ["imgt"]},
         "fixtures": {},
         "inputs": {},
