@@ -476,6 +476,7 @@ def _encode(coords, mask, chain_ids, residue_indices):
 
 
 _TRANSFORMED_ENCODER = hk.transform(_encode)
+_APPLY_ENCODER = jax.jit(_TRANSFORMED_ENCODER.apply)
 
 
 def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
@@ -485,7 +486,7 @@ def encode(coords: np.ndarray, mode: str = "sabr") -> np.ndarray:
     mask = np.ones((1, n_residues))
     chain_ids = np.ones((1, n_residues))
     residue_indices = np.arange(n_residues)[None, :]
-    result = _TRANSFORMED_ENCODER.apply(
+    result = _APPLY_ENCODER(
         load_parameters(mode),
         jax.random.PRNGKey(0),
         batched_coords,
