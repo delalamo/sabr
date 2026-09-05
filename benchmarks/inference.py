@@ -132,6 +132,12 @@ def worker(args):
         "api_samples": api_samples,
         "parity": "passed" if args.reference else "baseline",
         "cache_dir": str(args.cache_dir) if args.cache_dir else None,
+        "source_sha256": {
+            name: hashlib.sha256(
+                Path(sys.modules[f"sabr.{name}"].__file__).read_bytes()
+            ).hexdigest()
+            for name in ("model", "alignment")
+        },
     }
     (args.output / f"{key}.json").write_text(
         json.dumps(result, indent=2) + "\n"

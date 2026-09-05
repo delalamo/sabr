@@ -158,6 +158,12 @@ pre-commit run --all-files
 Package metadata remains ranged for normal installation. SAbR does not force a
 JAX backend; CPU is simply the canonical CI regression baseline.
 
+The encoder reuses compiled execution in masked length buckets, and automatic
+single-domain selection batches the H/K/L alignments. For repeated workloads,
+reuse one Python process or configure JAX's persistent compilation cache.
+The [inference performance report](benchmarks/README.md) records the incremental
+experiments, measured tradeoffs, rejected optimizations, and reproduction commands.
+
 The committed tests are self-contained and never download data. They verify
 the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
 H/K/L selection, regional corrections, structure-object behavior, and CLI

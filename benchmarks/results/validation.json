@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-05",
+  "baseline_revision": "2227a34",
+  "final_inference_revision": "25f057a",
+  "backend": "cpu",
+  "baseline_tests_passed": 199,
+  "baseline_coverage_percent": 96.44,
+  "final_tests_passed": 227,
+  "final_coverage_percent": 96.51,
+  "structure_mode_comparisons": 8,
+  "parity": "passed without relaxing original tolerances",
+  "checks": [
+    "black",
+    "isort",
+    "flake8",
+    "git diff --check"
+  ]
+}
