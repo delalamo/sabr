@@ -159,10 +159,19 @@ Package metadata remains ranged for normal installation. SAbR does not force a
 JAX backend; CPU is simply the canonical CI regression baseline.
 
 The encoder reuses compiled execution in masked length buckets, and automatic
-single-domain selection batches the H/K/L alignments. For repeated workloads,
-reuse one Python process or configure JAX's persistent compilation cache.
-The [inference performance report](benchmarks/README.md) records the incremental
-experiments, measured tradeoffs, rejected optimizations, and reproduction commands.
+single-domain selection batches the H/K/L alignments. On four bundled structures
+in both modes (M2 CPU), first inference improved from 2.85–3.86 s to 1.12–1.44 s;
+alternating warm comparisons improved by 4–8%. Ten nearby encoder input lengths
+reused one compilation instead of ten, improving encoder-only time by 4.5–6.2×.
+Bucketing trades some warm-call work for less recompilation. See
+[PR #213](https://github.com/delalamo/SAbR/pull/213) for measurement details.
+
+For repeated workloads, reuse one Python process. Separate processes can opt
+into JAX's persistent cache with a private, writable directory:
+
+```sh
+export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/sabr/jax"
+```
 
 The committed tests are self-contained and never download data. They verify
 the fixed asset hashes, encoder and alignment baselines, all numbering schemes,
