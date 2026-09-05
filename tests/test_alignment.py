@@ -16,6 +16,7 @@ from sabr.alignment import (
     load_gap_penalties,
     load_references,
 )
+from sabr.api import _normalize_chain_type
 from sabr.numbering import alignment_to_states
 
 DATA = Path(__file__).parent / "data"
@@ -478,3 +479,83 @@ def test_non_finite_similarity_matrix_is_rejected(monkeypatch):
     )
     with pytest.raises(ValueError, match="non-finite"):
         align(np.zeros((1, 64)), frozenset(), "H", 0.0)
+
+
+@pytest.mark.parametrize("candidate_order", ("K,H", "h,k,H"))
+def test_public_normalization_and_alignment_ties_use_canonical_order(
+    monkeypatch, candidate_order
+):
+    normalized = _normalize_chain_type(candidate_order, 0.0, "sabr")
+    assert normalized == "H,K"
+    monkeypatch.setattr(
+        "sabr.alignment._align_reference",
+        lambda query, reference, mode: (
+            np.eye(len(query), len(reference)),
+            np.zeros((len(query), len(reference))),
+            1.0,
+        ),
+    )
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, gap_indices: alignment,
+    )
+    _, selected, _ = align(np.zeros((2, 64)), frozenset(), normalized, 0.0)
+    assert selected == "H"
+
+
+def test_winning_multidomain_returns_raw_score_after_terminal_penalty(
+    monkeypatch,
+):
+    references = {
+        "H": (np.zeros((1, 64)), (1,)),
+        "HK": (np.ones((4, 64)), (1, 2, 129, 130)),
+    }
+    monkeypatch.setattr(
+        "sabr.alignment.load_references", lambda *args, **kwargs: references
+    )
+
+    def fake_align(query, reference, mode, free_gap_boundary=-1):
+        if len(reference) == 1:
+            return np.array([[1.0], [0.0]]), np.zeros((2, 1)), 1.0
+        return (
+            np.array([[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]),
+            np.zeros((2, 4)),
+            20.0,
+        )
+
+    monkeypatch.setattr("sabr.alignment._align_reference", fake_align)
+    monkeypatch.setattr(
+        "sabr.alignment.apply_corrections",
+        lambda alignment, gap_indices: alignment,
+    )
+    alignment, selected, score = align(
+        np.zeros((2, 64)), frozenset(), "H,HK", 0.0
+    )
+    assert selected == "HK"
+    assert score == 20.0
+    assert np.argwhere(alignment).tolist() == [[0, 1], [1, 128]]
+
+
+@pytest.mark.parametrize(
+    "representation,shape,assignments,message",
+    [
+        ("HK", (2, 128), [(0, 0)], "256 columns"),
+        ("HK", (2, 256), [(0, 0)], "K domain 2"),
+        ("HHK", (2, 384), [(0, 0), (1, 256)], "H domain 2"),
+        ("HK", (2, 256), [(0, 128), (1, 0)], "monotonic"),
+    ],
+)
+def test_multidomain_rejects_wrong_shape_missing_domains_and_reversed_order(
+    representation, shape, assignments, message
+):
+    alignment = np.zeros(shape, dtype=int)
+    for row, column in assignments:
+        alignment[row, column] = 1
+    with pytest.raises(ValueError, match=message):
+        _validate_multidomain_alignment(alignment, representation)
+
+
+@pytest.mark.parametrize("alignment", (np.zeros((2, 128)), np.ones(2)))
+def test_empty_or_nonmatrix_alignment_is_rejected(alignment):
+    with pytest.raises(ValueError, match="no assigned|two-dimensional"):
+        _alignment_path(alignment)

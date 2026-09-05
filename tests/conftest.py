@@ -1,4 +1,4 @@
-from pathlib import Path
+import functools
 
 import pytest
 from Bio.PDB import PDBParser
@@ -6,30 +6,29 @@ from Bio.PDB import PDBParser
 from sabr.alignment import align
 from sabr.model import encode
 from sabr.structure import extract_chain
-
-DATA = Path(__file__).parent / "data"
+from tests.helpers import CASES, DATA
 
 
 @pytest.fixture(scope="session")
-def aligned_cases():
-    parser = PDBParser(QUIET=True)
-    cases = {
-        "H": (DATA / "test_heavy_chain.pdb", "F"),
-        "K": (DATA / "12e8_L.pdb", "L"),
-        "L": (DATA / "1bjm_A.pdb", "A"),
-    }
-    results = {}
-    for expected, (path, chain) in cases.items():
-        structure = parser.get_structure(expected, path)
+def aligned_case():
+    @functools.cache
+    def prepare(chain_type, mode="sabr"):
+        filename, chain = CASES[chain_type]
+        path = DATA / filename
+        structure = PDBParser(QUIET=True).get_structure(chain_type, path)
         data = extract_chain(structure, chain, None)
+        embeddings = encode(data.coords, mode)
         alignment, selected, score = align(
-            encode(data.coords), data.gap_indices, "auto", 0.0
+            embeddings, data.gap_indices, "auto", 0.0, mode=mode
         )
-        results[expected] = {
+        return {
             "alignment": alignment,
+            "embeddings": embeddings,
             "chain": chain,
             "data": data,
             "path": path,
             "selected": selected,
+            "score": score,
         }
-    return results
+
+    return prepare

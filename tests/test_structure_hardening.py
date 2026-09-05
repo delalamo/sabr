@@ -47,7 +47,15 @@ def test_altloc_selection_prefers_blank_then_occupancy_then_name():
         for index, name in enumerate(("N", "CA", "C"))
     ]
     assert all(coord[1] == 2 for coord in _select_backbone(a + b, "x"))
-    assert all(coord[1] == 1 for coord in _select_backbone(a + a, "x"))
+    tied_b = [
+        _atom(name, "B", 0.4, (index, 2, 0))
+        for index, name in enumerate(("N", "CA", "C"))
+    ]
+    for atoms in (a + tied_b, tied_b + a):
+        assert all(coord[1] == 1 for coord in _select_backbone(atoms, "x"))
+    shared = [_atom("N", "", 0.1, (0, 3, 0))]
+    selected = _select_backbone(shared + a[1:] + b[1:], "x")
+    assert [coord[1] for coord in selected] == [3, 2, 2]
 
 
 def test_altloc_selection_rejects_incomplete_mixed_conformers():

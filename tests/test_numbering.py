@@ -12,24 +12,29 @@ from sabr.numbering import alignment_to_states, number_alignment
 DATA = Path(__file__).parent / "data"
 
 
-def test_auto_selection_and_all_numbering_schemes_match_goldens(aligned_cases):
-    expected = json.loads((DATA / "numbering_baseline.json").read_text())
-    for chain_type, result in aligned_cases.items():
-        assert result["selected"] == chain_type
-        for scheme in constants.NUMBERING_SCHEMES:
-            numbered = number_alignment(
-                result["alignment"],
-                result["data"].sequence,
-                scheme,
-                chain_type,
-            )
-            golden = expected[chain_type]["schemes"][scheme]
-            actual = [
-                [number, insertion_code, amino_acid]
-                for _, number, insertion_code, amino_acid in numbered
-            ]
-            assert numbered[0][0] == golden["first_row"]
-            assert actual == golden["numbered"]
+@pytest.mark.integration
+@pytest.mark.parametrize("chain_type", constants.CHAIN_TYPES)
+@pytest.mark.parametrize("scheme", constants.NUMBERING_SCHEMES)
+@pytest.mark.parametrize("mode", constants.MODES)
+def test_auto_selection_and_all_numbering_schemes_match_goldens(
+    aligned_case, chain_type, scheme, mode
+):
+    filename = (
+        "numbering_baseline.json"
+        if mode == "sabr"
+        else "softalign_numbering_baseline.json"
+    )
+    expected = json.loads((DATA / filename).read_text())
+    result = aligned_case(chain_type, mode)
+    assert result["selected"] == chain_type
+    numbered = number_alignment(
+        result["alignment"], result["data"].sequence, scheme, chain_type
+    )
+    golden = expected[chain_type]["schemes"][scheme]
+    assert numbered[0][0] == golden["first_row"]
+    assert [[number, code, aa] for _, number, code, aa in numbered] == golden[
+        "numbered"
+    ]
 
 
 def test_alignment_state_conversion_preserves_orphan_insertions():
@@ -286,6 +291,7 @@ def test_default_numbering_skips_reduced_reference_completion(monkeypatch):
     ]
 
 
+@pytest.mark.integration
 def test_8sve_huge_cdr1_matches_the_accepted_full_mapping():
     golden = json.loads((DATA / "8sve_cdr1_imgt.json").read_text())
     structure = PDBParser(QUIET=True).get_structure("long", DATA / "8sve_L.pdb")

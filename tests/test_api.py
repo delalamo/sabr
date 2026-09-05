@@ -314,3 +314,22 @@ def test_invalid_public_options_fail_before_model_execution(kwargs, message):
     )
     with pytest.raises(ValueError, match=message):
         renumber_structure(structure, "F", **kwargs)
+
+
+@pytest.mark.parametrize("chain_type", constants.TCR_CHAIN_TYPES)
+@pytest.mark.parametrize("scheme", ("chothia", "kabat", "martin", "wolfguy"))
+def test_tcr_invalid_scheme_fails_before_encoding(
+    monkeypatch, chain_type, scheme
+):
+    monkeypatch.setattr(
+        api,
+        "encode",
+        lambda *args, **kwargs: pytest.fail(
+            "unsupported TCR scheme reached encoder"
+        ),
+    )
+    structure = PDBParser(QUIET=True).get_structure(
+        "input", DATA / "test_heavy_chain.pdb"
+    )
+    with pytest.raises(ValueError, match="only IMGT or AHo"):
+        renumber_structure(structure, "F", chain_type=chain_type, scheme=scheme)

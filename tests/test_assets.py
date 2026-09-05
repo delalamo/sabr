@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -109,3 +110,22 @@ def test_model_parameters_are_cached_and_reference_arrays_are_read_only():
     for embeddings, positions in first_references.values():
         assert not embeddings.flags.writeable
         assert isinstance(positions, tuple)
+
+
+def test_new_regression_files_match_recorded_checksums():
+    manifest = json.loads((DATA / "regression_provenance.json").read_text())
+    for name, checksum in {**manifest["inputs"], **manifest["outputs"]}.items():
+        assert (
+            hashlib.sha256((DATA / name).read_bytes()).hexdigest() == checksum
+        ), name
+
+
+@pytest.mark.parametrize("loader", (load_parameters, load_gap_penalties))
+def test_parameter_loaders_reject_unknown_modes(loader):
+    with pytest.raises(ValueError, match="mode"):
+        loader("unknown")
+
+
+def test_reference_loader_rejects_unknown_mode():
+    with pytest.raises(ValueError, match="mode"):
+        load_references(0.0, "unknown")
